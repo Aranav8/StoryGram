@@ -1,5 +1,5 @@
-import 'package:collabwrite/screens/home.dart';
 import 'package:collabwrite/views/home/home_screen.dart';
+import 'package:collabwrite/views/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -12,8 +12,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      initialRoute: '/home',
+      initialRoute: '/splash',
       routes: {
+        '/splash': (context) => const SplashScreen(nextScreen: HomeScreen()),
         '/home': (context) => const HomeScreen(),
       },
     );

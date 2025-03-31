@@ -8,6 +8,7 @@ class StoryTypeOption extends StatelessWidget {
   final VoidCallback onTap;
 
   const StoryTypeOption({
+    super.key,
     required this.text,
     required this.isSelected,
     required this.onTap,
@@ -25,12 +26,14 @@ class StoryTypeOption extends StatelessWidget {
           border:
               Border.all(color: isSelected ? Colors.transparent : Colors.grey),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ),

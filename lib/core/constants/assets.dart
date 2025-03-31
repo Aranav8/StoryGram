@@ -8,4 +8,5 @@ class AppAssets {
   static const String library = 'assets/icons/library.svg';
   static const String profile = 'assets/icons/profile.svg';
   static const String add = 'assets/icons/add.svg';
+  static const String logo = 'assets/icons/logo.svg';
 }

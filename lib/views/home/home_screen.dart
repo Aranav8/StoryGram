@@ -5,6 +5,8 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/assets.dart';
 import '../../viewmodel/home_viewmodel.dart';
 import '../create/create_screen.dart';
+import '../library/library_screen.dart';
+import '../profile/profile_screen.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
 import '../widgets/filter_widget.dart';
 import '../widgets/story_card.dart';
@@ -22,27 +24,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onNavItemTapped(int index) {
     if (index == _selectedNavIndex) return;
 
-    Widget destinationScreen;
-    switch (index) {
-      case 0:
-        destinationScreen = const HomeScreen();
-        break;
-      case 1:
-        destinationScreen = const CreateScreen();
-        break;
-      // case 2:
-      //   destinationScreen = const LibraryScreen();
-      //   break;
-      // case 3:
-      //   // destinationScreen = const ProfileScreen();
-      //   break;
-      default:
-        return;
-    }
-
+    final screens = [
+      const HomeScreen(),
+      const CreateScreen(),
+      const LibraryScreen(),
+      const ProfileScreen(),
+    ];
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => destinationScreen),
+      MaterialPageRoute(builder: (context) => screens[index]),
     );
   }
 
