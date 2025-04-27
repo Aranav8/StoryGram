@@ -1,10 +1,14 @@
 import 'package:collabwrite/core/constants/assets.dart';
 import 'package:collabwrite/core/constants/colors.dart';
+import 'package:collabwrite/viewmodel/library_viewmodel.dart';
 import 'package:collabwrite/views/home/home_screen.dart';
 import 'package:collabwrite/views/create/create_screen.dart';
 import 'package:collabwrite/views/profile/profile_screen.dart';
 import 'package:flutter/material.dart';
-import '../../data/models/story.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import '../../data/models/story_model.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
 import '../widgets/empty_state.dart';
 
@@ -17,94 +21,32 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   final int _selectedNavIndex = 2;
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Single', 'Chapter-Based', 'Recent'];
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearchActive = false;
 
-  // Sample data - In a real app, this would come from a service or API
-  final List<Story> _stories = [
-    Story(
-      id: '1',
-      title: 'Echoes Tomorrow: A Sci-Fi Mystery',
-      type: 'Chapter-Based',
-      lastEdited: DateTime.now(),
-      status: StoryStatus.draft,
-      coverImage: 'assets/images/cover1.jpg',
-      chapters: [
-        Chapter(id: '1', title: 'Chapter 1: The Beginning', isComplete: true),
-        Chapter(id: '2', title: 'Chapter 2: The Journey', isComplete: true),
-        Chapter(id: '3', title: 'Chapter 3: The Revelation', isComplete: false),
-      ],
-    ),
-    Story(
-      id: '2',
-      title: 'Echoes Tomorrow: A Sci-Fi Mystery',
-      type: 'Single',
-      lastEdited: DateTime.now(),
-      status: StoryStatus.published,
-      coverImage: 'assets/images/cover2.jpg',
-    ),
-    Story(
-      id: '3',
-      title: 'Echoes Tomorrow: A Sci-Fi Mystery',
-      type: 'Single',
-      lastEdited: DateTime.now(),
-      status: StoryStatus.draft,
-      coverImage: 'assets/images/cover3.jpg',
-    ),
-    Story(
-      id: '4',
-      title: 'The Last Frontier',
-      type: 'Chapter-Based',
-      lastEdited: DateTime.now().subtract(const Duration(days: 2)),
-      status: StoryStatus.published,
-      coverImage: 'assets/images/cover4.jpg',
-      chapters: [
-        Chapter(id: '1', title: 'Chapter 1: New Horizons', isComplete: true),
-        Chapter(id: '2', title: 'Chapter 2: Discovery', isComplete: true),
-      ],
-    ),
-    Story(
-      id: '5',
-      title: 'Midnight Chronicles',
-      type: 'Single',
-      lastEdited: DateTime.now().subtract(const Duration(days: 1)),
-      status: StoryStatus.archived,
-      coverImage: 'assets/images/cover5.jpg',
-    ),
-  ];
+  late final LibraryViewModel _viewModel;
 
-  List<Story> get _filteredStories {
-    List<Story> filtered = List.from(_stories);
+  @override
+  void initState() {
+    super.initState();
 
-    // Apply search filter if search is active
-    if (_isSearchActive && _searchController.text.isNotEmpty) {
-      final query = _searchController.text.toLowerCase();
-      filtered = filtered
-          .where((story) => story.title.toLowerCase().contains(query))
-          .toList();
-    }
+    _viewModel = LibraryViewModel();
 
-    // Apply type filter
-    if (_selectedFilter != 'All' && _selectedFilter != 'Recent') {
-      filtered =
-          filtered.where((story) => story.type == _selectedFilter).toList();
-    } else if (_selectedFilter == 'Recent') {
-      // Sort by last edited date for Recent filter
-      filtered.sort((a, b) => b.lastEdited.compareTo(a.lastEdited));
-      // Limit to the most recent 5 stories
-      if (filtered.length > 5) {
-        filtered = filtered.sublist(0, 5);
-      }
-    }
+    _searchController.text = _viewModel.searchQuery;
 
-    return filtered;
+    _searchController.addListener(() {
+      _viewModel.updateSearchQuery(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _viewModel.dispose();
+    super.dispose();
   }
 
   void _onNavItemTapped(int index) {
     if (index == _selectedNavIndex) return;
-
     final screens = [
       const HomeScreen(),
       const CreateScreen(),
@@ -113,7 +55,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ];
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => screens[index]),
+      PageRouteBuilder(
+        pageBuilder: (context, animation1, animation2) => screens[index],
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
     );
   }
 
@@ -121,249 +67,433 @@ class _LibraryScreenState extends State<LibraryScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const CreateScreen()),
+    ).then((_) => _viewModel.loadStories());
+  }
+
+  void _navigateToStoryDetail(Story story) {
+    print("Navigate to detail/edit for: ${story.title}");
+    _showSnackBar(
+        'Navigate to edit screen for "${story.title}" (Not Implemented)');
+  }
+
+  AppBar _buildAppBar(BuildContext context) {
+    final viewModel = context.watch<LibraryViewModel>();
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 1.0,
+      shadowColor: Colors.grey[200],
+      title: viewModel.isSearchActive
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                  hintText: 'Search library...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.grey[600])),
+              style: const TextStyle(color: Colors.black87, fontSize: 16),
+            )
+          : const Text('My Library',
+              style: TextStyle(
+                  color: Colors.black87, fontWeight: FontWeight.bold)),
+      actions: [
+        IconButton(
+          icon: Icon(viewModel.isSearchActive ? Icons.close : Icons.search,
+              color: Colors.grey[700]),
+          tooltip: viewModel.isSearchActive ? 'Close Search' : 'Search Library',
+          onPressed: () => context.read<LibraryViewModel>().toggleSearch(),
+        ),
+        IconButton(
+          icon: Icon(Icons.filter_list, color: Colors.grey[700]),
+          tooltip: 'Filter & Sort',
+          onPressed: () => _showFilterBottomSheet(context),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+          tooltip: 'Create New Story',
+          onPressed: _navigateToCreateScreen,
+        ),
+        const SizedBox(width: 5),
+      ],
     );
   }
 
-  // void _navigateToStoryDetail(Story story) {
-  //   Navigator.push(
-  //     context,
-  //     MaterialPageRoute(builder: (context) => StoryDetailScreen(story: story)),
-  //   );
-  // }
+  Widget _buildStoryItem(BuildContext context, Story story) {
+    int totalChapters = story.chapters?.length ?? 0;
+    int completedChapters =
+        story.chapters?.where((c) => c.isComplete).length ?? 0;
+    double progress =
+        totalChapters > 0 ? completedChapters / totalChapters : 0.0;
 
-  void _addNewChapter(Story story) {
-    // Show dialog to enter chapter title
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New Chapter'),
-        content: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Enter chapter title',
-            border: OutlineInputBorder(),
-          ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      shadowColor: Colors.grey[100],
+      child: InkWell(
+        onTap: () => _navigateToStoryDetail(story),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _buildCoverImageThumbnail(story.coverImage),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(story.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    _buildStatusChip(story.status),
+                    const SizedBox(width: 8),
+                    Text(story.storyType,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                  ]),
+                  const SizedBox(height: 8),
+                  if (story.storyType == 'Chapter-Based')
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor:
+                                  AppColors.primary.withOpacity(0.2),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  AppColors.primary),
+                              minHeight: 6,
+                              borderRadius: BorderRadius.circular(3)),
+                          const SizedBox(height: 4),
+                          Text(
+                              '$completedChapters / $totalChapters Chapters Complete',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[700])),
+                          const SizedBox(height: 6),
+                        ]),
+                  Text('Edited: ${_formatDateTimeRelative(story.lastEdited)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                ])),
+            SizedBox(
+                width: 30,
+                child: IconButton(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  color: Colors.grey[600],
+                  padding: EdgeInsets.zero,
+                  tooltip: 'Story Options',
+                  onPressed: () => _showStoryOptions(context, story),
+                  constraints: const BoxConstraints(),
+                )),
+          ]),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              // In a real app, this would update the database
-              setState(() {
-                final newIndex = story.chapters?.length ?? 0;
-                story.chapters?.add(
-                  Chapter(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    title: 'Chapter ${newIndex + 1}: New Chapter',
-                    isComplete: false,
-                  ),
-                );
-              });
-              Navigator.pop(context);
-              _showSnackBar('New chapter added');
-            },
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
   }
 
-  void _toggleSearchActive() {
-    setState(() {
-      _isSearchActive = !_isSearchActive;
-      if (!_isSearchActive) {
-        _searchController.clear();
-      }
-    });
+  Widget _buildCoverImageThumbnail(String? coverImagePath) {
+    return ClipRRect(
+        borderRadius: BorderRadius.circular(8.0),
+        child: Container(
+            width: 70,
+            height: 90,
+            color: Colors.grey[200],
+            child: coverImagePath != null && coverImagePath.isNotEmpty
+                ? Image.asset(coverImagePath,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.image_not_supported,
+                        color: Colors.grey))
+                : const Center(
+                    child:
+                        Icon(Icons.menu_book, color: Colors.grey, size: 30))));
   }
 
-  void _showFilterBottomSheet() {
+  Widget _buildStatusChip(StoryStatus status) {
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+            color: _getStatusColor(status).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: _getStatusColor(status).withOpacity(0.3), width: 0.5)),
+        child: Text(_getStatusText(status),
+            style: TextStyle(
+                fontSize: 11,
+                color: _getStatusColor(status),
+                fontWeight: FontWeight.w500)));
+  }
+
+  void _showFilterBottomSheet(BuildContext context) {
+    final viewModel = context.read<LibraryViewModel>();
+    Set<StoryStatus> tempSelectedStatuses =
+        Set.from(viewModel.selectedStatuses);
+    Set<String> tempSelectedTypes = Set.from(viewModel.selectedTypes);
+    StorySortOption tempSortOption = viewModel.sortOption;
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (statefulContext, setModalState) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(statefulContext).viewInsets.bottom,
+              top: 20,
+              left: 20,
+              right: 20),
+          child: SingleChildScrollView(
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Filter Stories',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('Filter & Sort',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                TextButton(
+                    onPressed: () => setModalState(() {
+                          tempSelectedStatuses.clear();
+                          tempSelectedTypes.clear();
+                          tempSortOption = StorySortOption.lastEditedDesc;
+                        }),
+                    child: const Text('Reset All')),
+              ]),
+              const Divider(height: 20),
+              const Text('Status',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
               Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  ..._filters.map((filter) => FilterChip(
-                        label: Text(filter),
-                        selected: _selectedFilter == filter,
-                        onSelected: (selected) {
-                          setModalState(() {
-                            _selectedFilter = filter;
-                          });
-                          setState(() {});
-                        },
-                      )),
-                  FilterChip(
-                    label: const Text('Published'),
-                    selected: _selectedFilter == 'Published',
-                    onSelected: (selected) {
-                      setModalState(() {
-                        _selectedFilter = 'Published';
-                      });
-                      setState(() {});
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('Drafts'),
-                    selected: _selectedFilter == 'Drafts',
-                    onSelected: (selected) {
-                      setModalState(() {
-                        _selectedFilter = 'Drafts';
-                      });
-                      setState(() {});
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('Archived'),
-                    selected: _selectedFilter == 'Archived',
-                    onSelected: (selected) {
-                      setModalState(() {
-                        _selectedFilter = 'Archived';
-                      });
-                      setState(() {});
-                    },
-                  ),
-                ],
-              ),
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: StoryStatus.values.map((status) {
+                    final bool isSelected =
+                        tempSelectedStatuses.contains(status);
+                    return FilterChip(
+                        label: Text(_getStatusText(status)),
+                        selected: isSelected,
+                        onSelected: (selected) => setModalState(() => selected
+                            ? tempSelectedStatuses.add(status)
+                            : tempSelectedStatuses.remove(status)),
+                        selectedColor: _getStatusColor(status).withOpacity(0.2),
+                        checkmarkColor: _getStatusColor(status),
+                        labelStyle: TextStyle(
+                            color: isSelected
+                                ? _getStatusColor(status)
+                                : Colors.grey[700]),
+                        side: BorderSide(
+                            color: isSelected
+                                ? _getStatusColor(status).withOpacity(0.3)
+                                : Colors.grey[300]!));
+                  }).toList()),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
+              const Text('Type', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: ['Single', 'Chapter-Based'].map((type) {
+                    final bool isSelected = tempSelectedTypes.contains(type);
+                    return FilterChip(
+                        label: Text(type),
+                        selected: isSelected,
+                        onSelected: (selected) => setModalState(() => selected
+                            ? tempSelectedTypes.add(type)
+                            : tempSelectedTypes.remove(type)),
+                        selectedColor: AppColors.primary.withOpacity(0.2),
+                        checkmarkColor: AppColors.primary,
+                        labelStyle: TextStyle(
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.grey[700]),
+                        side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary.withOpacity(0.3)
+                                : Colors.grey[300]!));
+                  }).toList()),
+              const SizedBox(height: 20),
+              const Text('Sort By',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              RadioListTile<StorySortOption>(
+                  title: const Text('Last Edited (Newest First)'),
+                  value: StorySortOption.lastEditedDesc,
+                  groupValue: tempSortOption,
+                  onChanged: (v) => setModalState(() => tempSortOption = v!),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact),
+              RadioListTile<StorySortOption>(
+                  title: const Text('Last Edited (Oldest First)'),
+                  value: StorySortOption.lastEditedAsc,
+                  groupValue: tempSortOption,
+                  onChanged: (v) => setModalState(() => tempSortOption = v!),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact),
+              RadioListTile<StorySortOption>(
+                  title: const Text('Title (A-Z)'),
+                  value: StorySortOption.titleAsc,
+                  groupValue: tempSortOption,
+                  onChanged: (v) => setModalState(() => tempSortOption = v!),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact),
+              RadioListTile<StorySortOption>(
+                  title: const Text('Title (Z-A)'),
+                  value: StorySortOption.titleDesc,
+                  groupValue: tempSortOption,
+                  onChanged: (v) => setModalState(() => tempSortOption = v!),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact),
+              const SizedBox(height: 20),
+              SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary),
                     onPressed: () {
-                      setModalState(() {
-                        _selectedFilter = 'All';
-                      });
-                      setState(() {});
+                      context.read<LibraryViewModel>().applyFilters(
+                            statuses: tempSelectedStatuses,
+                            types: tempSelectedTypes,
+                            sort: tempSortOption,
+                          );
+                      Navigator.pop(sheetContext);
                     },
-                    child: const Text('Reset'),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Apply'),
-                  ),
-                ],
-              ),
+                    child: const Text('Apply Filters'),
+                  )),
+              const SizedBox(height: 20),
             ],
-          ),
+          )),
         ),
       ),
     );
   }
 
-  void _showStoryOptions(Story story) {
+  void _showStoryOptions(BuildContext context, Story story) {
+    final viewModel = context.read<LibraryViewModel>();
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              story.title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.edit),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 40,
+              height: 5,
+              margin: const EdgeInsets.only(bottom: 15),
+              decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10))),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Text(story.title,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis)),
+          const SizedBox(height: 10),
+          const Divider(),
+          ListTile(
+              leading: const Icon(Icons.edit_outlined),
               title: const Text('Edit Story'),
               onTap: () {
-                Navigator.pop(context);
-                // _navigateToStoryDetail(story);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share),
+                Navigator.pop(sheetContext);
+                _navigateToStoryDetail(story);
+              }),
+          ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('Duplicate'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showSnackBar('Duplicate action (Not Implemented)');
+              }),
+          ListTile(
+              leading: const Icon(Icons.share_outlined),
               title: const Text('Share'),
               onTap: () {
-                Navigator.pop(context);
-                _showSnackBar('Sharing options coming soon');
-              },
-            ),
-            if (story.status == StoryStatus.draft)
-              ListTile(
-                leading: const Icon(Icons.publish),
-                title: const Text('Publish'),
-                onTap: () {
-                  setState(() {
-                    story.status = StoryStatus.published;
-                  });
-                  Navigator.pop(context);
-                  _showSnackBar('Story published successfully');
-                },
-              ),
-            if (story.status == StoryStatus.published)
-              ListTile(
-                leading: const Icon(Icons.archive),
-                title: const Text('Archive'),
-                onTap: () {
-                  setState(() {
-                    story.status = StoryStatus.archived;
-                  });
-                  Navigator.pop(context);
-                  _showSnackBar('Story archived');
-                },
-              ),
+                Navigator.pop(sheetContext);
+                _showSnackBar('Sharing options (Not Implemented)');
+              }),
+          if (story.status == StoryStatus.draft)
             ListTile(
-              leading: Icon(Icons.delete, color: Colors.red[700]),
-              title: Text('Delete', style: TextStyle(color: Colors.red[700])),
+                leading:
+                    const Icon(Icons.publish_outlined, color: Colors.green),
+                title: const Text('Publish',
+                    style: TextStyle(color: Colors.green)),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  bool success = await viewModel.updateStoryStatus(
+                      story.id, StoryStatus.published);
+                  _showSnackBar(
+                      success ? 'Story published' : 'Failed to publish story');
+                }),
+          if (story.status == StoryStatus.published)
+            ListTile(
+                leading:
+                    Icon(Icons.archive_outlined, color: Colors.orange[800]),
+                title: Text('Archive',
+                    style: TextStyle(color: Colors.orange[800])),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  bool success = await viewModel.updateStoryStatus(
+                      story.id, StoryStatus.archived);
+                  _showSnackBar(
+                      success ? 'Story archived' : 'Failed to archive story');
+                }),
+          if (story.status == StoryStatus.archived)
+            ListTile(
+                leading:
+                    Icon(Icons.unarchive_outlined, color: Colors.blue[700]),
+                title: Text('Unarchive',
+                    style: TextStyle(color: Colors.blue[700])),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  bool success = await viewModel.updateStoryStatus(
+                      story.id, StoryStatus.draft);
+                  _showSnackBar(success
+                      ? 'Story unarchived'
+                      : 'Failed to unarchive story');
+                }),
+          const Divider(),
+          ListTile(
+              leading: Icon(Icons.delete_outline, color: AppColors.tint),
+              title: Text('Delete', style: TextStyle(color: AppColors.tint)),
               onTap: () {
-                Navigator.pop(context);
-                _showDeleteConfirmation(story);
-              },
-            ),
-          ],
-        ),
+                Navigator.pop(sheetContext);
+                _showDeleteConfirmation(context, story);
+              }),
+        ]),
       ),
     );
   }
 
-  void _showDeleteConfirmation(Story story) {
+  void _showDeleteConfirmation(BuildContext context, Story story) {
+    final viewModel = context.read<LibraryViewModel>();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Story'),
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text('Delete Story?'),
         content: Text(
-            'Are you sure you want to delete "${story.title}"? This cannot be undone.'),
+            'Are you sure you want to permanently delete "${story.title}"? This action cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              setState(() {
-                _stories.remove(story);
-              });
-              Navigator.pop(context);
-              _showSnackBar('Story deleted');
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              bool success = await viewModel.deleteStory(story.id);
+              _showSnackBar(success
+                  ? '"${story.title}" deleted'
+                  : 'Failed to delete story');
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.tint),
             child: const Text('Delete'),
           ),
         ],
@@ -372,178 +502,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(10),
-      ),
-    );
+        margin: const EdgeInsets.all(15),
+        backgroundColor: AppColors.secondary,
+        duration: const Duration(seconds: 2)));
   }
 
-  Widget _buildStoryCard(Story story) {
-    // For chapter-based stories
-    if (story.type == 'Chapter-Based' &&
-        story.chapters != null &&
-        story.chapters!.isNotEmpty) {
-      return Card(
-        margin: const EdgeInsets.only(bottom: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        elevation: 2,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      story.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        '${story.chapters!.length} chapters',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        onPressed: () => _showStoryOptions(story),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.only(left: 8),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const Divider(),
-              ...story.chapters!.map((chapter) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            chapter.title,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: chapter.isComplete
-                                  ? Colors.black87
-                                  : Colors.grey[700],
-                            ),
-                          ),
-                        ),
-                        if (chapter.isComplete)
-                          const Icon(Icons.check, color: Colors.green, size: 16)
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange[100],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              'Draft',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange[800],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  )),
-              TextButton.icon(
-                onPressed: () => _addNewChapter(story),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add New Chapter'),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  alignment: Alignment.centerLeft,
-                  foregroundColor: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // For single stories
-    return Card(
-      margin: const EdgeInsets.only(bottom: 15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      elevation: 2,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        title: Text(
-          story.title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 5),
-          child: Text(
-            'Last Edited: ${_formatDateTime(story.lastEdited)}',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: _getStatusColor(story.status).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _getStatusColor(story.status).withOpacity(0.3),
-                ),
-              ),
-              child: Text(
-                _getStatusText(story.status),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _getStatusColor(story.status),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => _showStoryOptions(story),
-            ),
-          ],
-        ),
-        // onTap: () => _navigateToStoryDetail(story),
-      ),
-    );
-  }
-
-  String _formatDateTime(DateTime dateTime) {
+  String _formatDateTimeRelative(DateTime dateTime) {
     final now = DateTime.now();
-    if (dateTime.year == now.year &&
-        dateTime.month == now.month &&
-        dateTime.day == now.day) {
-      return 'Today, ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')} ${dateTime.hour >= 12 ? 'PM' : 'AM'}';
-    } else if (dateTime.year == now.year &&
-        dateTime.month == now.month &&
-        dateTime.day == now.day - 1) {
-      return 'Yesterday, ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')} ${dateTime.hour >= 12 ? 'PM' : 'AM'}';
-    } else {
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}, ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')} ${dateTime.hour >= 12 ? 'PM' : 'AM'}';
-    }
+    final difference = now.difference(dateTime);
+    if (difference.inSeconds < 60)
+      return 'Just now';
+    else if (difference.inMinutes < 60)
+      return '${difference.inMinutes}m ago';
+    else if (difference.inHours < 24)
+      return '${difference.inHours}h ago';
+    else if (difference.inDays < 7)
+      return '${difference.inDays}d ago';
+    else
+      return DateFormat('MMM d, yyyy').format(dateTime);
   }
 
   String _getStatusText(StoryStatus status) {
@@ -554,8 +534,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return 'Published';
       case StoryStatus.archived:
         return 'Archived';
-      default:
-        return '';
     }
   }
 
@@ -566,131 +544,58 @@ class _LibraryScreenState extends State<LibraryScreen> {
       case StoryStatus.published:
         return Colors.green[700]!;
       case StoryStatus.archived:
-        return Colors.grey[700]!;
-      default:
-        return Colors.black;
+        return Colors.blueGrey[600]!;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final filteredStories = _filteredStories;
-    final bool hasContent = filteredStories.isNotEmpty;
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Builder(
+        builder: (context) {
+          final viewModel = context.watch<LibraryViewModel>();
 
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'My Library',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: _isSearchActive ? 0 : 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.search, color: Colors.grey[600]),
-                    const SizedBox(width: 10),
-                    if (_isSearchActive)
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: const InputDecoration(
-                            hintText: 'Search',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          onChanged: (value) => setState(() {}),
-                          autofocus: true,
-                        ),
-                      )
-                    else
-                      GestureDetector(
-                        onTap: _toggleSearchActive,
-                        child: Text(
-                          'Search',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                      ),
-                    if (_isSearchActive)
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _toggleSearchActive,
-                        constraints: const BoxConstraints(),
-                        padding: EdgeInsets.zero,
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ..._filters.map((filter) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(filter),
-                            selected: _selectedFilter == filter,
-                            selectedColor: AppColors.primary.withOpacity(0.2),
-                            checkmarkColor: AppColors.primary,
-                            onSelected: (selected) {
-                              setState(() {
-                                _selectedFilter = filter;
-                              });
-                            },
-                          ),
-                        )),
-                    IconButton(
-                      icon: const Icon(Icons.filter_list),
-                      onPressed: _showFilterBottomSheet,
-                      tooltip: 'More filters',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: hasContent
-                    ? ListView.builder(
-                        itemCount: filteredStories.length,
-                        itemBuilder: (context, index) =>
-                            _buildStoryCard(filteredStories[index]),
-                      )
-                    : EmptyState(
-                        icon: Icons.menu_book,
-                        title: 'No stories found',
-                        message:
-                            'Try adjusting your filters or create a new story',
-                        actionLabel: 'Create New Story',
-                        onAction: _navigateToCreateScreen,
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToCreateScreen,
-        backgroundColor: Colors.red,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        child: const Icon(Icons.add),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onItemTapped: _onNavItemTapped,
+          return Scaffold(
+            backgroundColor: Colors.grey[50],
+            appBar: _buildAppBar(context),
+            body: SafeArea(
+              child: viewModel.isLoading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : viewModel.filteredStories.isNotEmpty
+                      ? ListView.builder(
+                          padding: const EdgeInsets.all(15),
+                          itemCount: viewModel.filteredStories.length,
+                          itemBuilder: (ctx, index) => _buildStoryItem(
+                              ctx, viewModel.filteredStories[index]),
+                        )
+                      : Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: EmptyState(
+                                icon: Icons.menu_book,
+                                title: viewModel.isSearchActive ||
+                                        viewModel.selectedStatuses.isNotEmpty ||
+                                        viewModel.selectedTypes.isNotEmpty
+                                    ? 'No Matching Stories'
+                                    : 'Your Library is Empty',
+                                message: viewModel.isSearchActive ||
+                                        viewModel.selectedStatuses.isNotEmpty ||
+                                        viewModel.selectedTypes.isNotEmpty
+                                    ? 'Try adjusting your search or filters.'
+                                    : 'Start creating your first story!',
+                                actionLabel: 'Create New Story',
+                                onAction: _navigateToCreateScreen,
+                              ))),
+            ),
+            bottomNavigationBar: CustomBottomNavBar(
+              selectedIndex: _selectedNavIndex,
+              onItemTapped: _onNavItemTapped,
+            ),
+          );
+        },
       ),
     );
   }

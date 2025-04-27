@@ -1,4 +1,5 @@
 import 'package:collabwrite/views/home/home_screen.dart';
+import 'package:collabwrite/views/signup/signup_screen.dart';
 import 'package:collabwrite/views/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
 

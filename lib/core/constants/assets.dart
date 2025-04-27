@@ -9,4 +9,6 @@ class AppAssets {
   static const String profile = 'assets/icons/profile.svg';
   static const String add = 'assets/icons/add.svg';
   static const String logo = 'assets/icons/logo.svg';
+  static const String facebook = 'assets/images/facebook_icon.png';
+  static const String google = 'assets/images/google_icon.png';
 }

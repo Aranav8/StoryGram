@@ -1,17 +1,20 @@
 import 'dart:io';
 
 import 'package:collabwrite/core/constants/colors.dart';
+import 'package:collabwrite/viewmodel/create_viewmodel.dart';
 import 'package:collabwrite/views/profile/profile_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../home/home_screen.dart';
 import '../library/library_screen.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
-import '../widgets/custom_button.dart';
-import '../widgets/story_type_option.dart';
-import 'package:image_picker/image_picker.dart';
+import '../../data/models/story_model.dart';
 
 class CreateScreen extends StatefulWidget {
-  const CreateScreen({super.key});
+  final Story? draftStory;
+
+  const CreateScreen({super.key, this.draftStory});
 
   @override
   State<CreateScreen> createState() => _CreateScreenState();
@@ -19,65 +22,56 @@ class CreateScreen extends StatefulWidget {
 
 class _CreateScreenState extends State<CreateScreen> {
   final int _selectedNavIndex = 1;
-  String _selectedStoryType = 'Single Story';
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _genreController = TextEditingController();
-  final TextEditingController _writingController = TextEditingController();
 
-  bool _isSaving = false;
-  bool _hasUnsavedChanges = false;
-  String? _coverImagePath;
-  final List<String> _availableStoryTypes = [
-    'Single Story',
-    'Chapter-based',
-    'Collaborative'
-  ];
-  final List<String> _popularGenres = [
-    'Fiction',
-    'Fantasy',
-    'Adventure',
-    'Romance',
-    'Sci-Fi',
-    'Mystery',
-    'Thriller',
-    'Horror',
-    'Historical',
-    'Non-Fiction'
-  ];
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _writingController;
+
+  late final CreateViewModel _viewModel;
+
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   @override
   void initState() {
     super.initState();
-    _setupTextControllerListeners();
+
+    _viewModel = CreateViewModel();
+    _viewModel.initialize(draftStory: widget.draftStory);
+
+    _titleController = TextEditingController(text: _viewModel.title);
+    _descriptionController =
+        TextEditingController(text: _viewModel.description);
+    _writingController = TextEditingController(text: _viewModel.writingContent);
+
+    _titleController.addListener(() {
+      _viewModel.setTitle(_titleController.text);
+    });
+    _descriptionController.addListener(() {
+      _viewModel.setDescription(_descriptionController.text);
+    });
+    _writingController.addListener(() {
+      _viewModel.setWritingContent(_writingController.text);
+    });
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _genreController.dispose();
     _writingController.dispose();
+    _viewModel.dispose();
     super.dispose();
-  }
-
-  void _setupTextControllerListeners() {
-    void listener() => setState(() => _hasUnsavedChanges = true);
-    _titleController.addListener(listener);
-    _descriptionController.addListener(listener);
-    _genreController.addListener(listener);
-    _writingController.addListener(listener);
   }
 
   void _onNavItemTapped(int index) {
     if (index == _selectedNavIndex) return;
 
-    if (_hasUnsavedChanges) {
-      _showUnsavedChangesDialog(index);
-      return;
+    if (_viewModel.hasUnsavedChanges) {
+      _showUnsavedChangesDialog(() => _navigateToScreen(index));
+    } else {
+      _navigateToScreen(index);
     }
-
-    _navigateToScreen(index);
   }
 
   void _navigateToScreen(int index) {
@@ -89,588 +83,614 @@ class _CreateScreenState extends State<CreateScreen> {
     ];
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => screens[index]),
+      PageRouteBuilder(
+        pageBuilder: (context, animation1, animation2) => screens[index],
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
     );
   }
 
-  Future<void> _showUnsavedChangesDialog(int targetIndex) async {
-    final result = await showDialog<bool>(
+  Future<bool> _onWillPop() async {
+    if (_viewModel.hasUnsavedChanges) {
+      _showUnsavedChangesDialog(() => Navigator.of(context).pop());
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _showUnsavedChangesDialog(VoidCallback onDiscard) async {
+    await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: const Text('Unsaved Changes'),
         content: const Text(
-            'You have unsaved changes. Would you like to save your draft before leaving?'),
+            'Do you want to save your changes as a draft before leaving?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+            onPressed: () {
+              Navigator.pop(context);
+              onDiscard();
+            },
+            child:
+                const Text('Discard', style: TextStyle(color: AppColors.tint)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save Draft'),
+            onPressed: () async {
+              Navigator.pop(context);
+              bool saved = await _saveDraft();
+              if (saved)
+                _showSnackBar('Draft saved successfully!');
+              else
+                _showSnackBar('Could not save draft (e.g., title missing).',
+                    isError: true);
+              onDiscard();
+            },
+            child: const Text('Save Draft',
+                style: TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
     );
-
-    if (result == true) {
-      await _saveDraft();
-    }
-
-    if (mounted) {
-      _navigateToScreen(targetIndex);
-    }
   }
 
   Future<void> _pickCoverImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-
-    if (image != null) {
-      setState(() {
-        _coverImagePath = image.path;
-        _hasUnsavedChanges = true;
-      });
-    }
+    await _viewModel.pickCoverImage();
   }
 
-  Future<void> _saveDraft() async {
-    if (_titleController.text.isEmpty) {
-      _showSnackBar('Please add a title to save your story');
-      return;
-    }
+  void _removeCoverImage() {
+    _viewModel.removeCoverImage();
+  }
 
-    setState(() => _isSaving = true);
-
-    try {
-      // Simulate saving with a delay
-      await Future.delayed(const Duration(seconds: 1));
-      setState(() {
-        _hasUnsavedChanges = false;
-        _isSaving = false;
-      });
-      _showSnackBar('Draft saved successfully');
-    } catch (e) {
-      setState(() => _isSaving = false);
-      _showSnackBar('Failed to save draft: ${e.toString()}');
-    }
+  Future<bool> _saveDraft() async {
+    bool success = await _viewModel.saveDraft();
+    return success;
   }
 
   Future<void> _publishStory() async {
-    if (_titleController.text.isEmpty) {
-      _showSnackBar('Please add a title to publish your story');
-      return;
-    }
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15)),
+              title: const Text('Publish Story?'),
+              content: const Text(
+                  'This will make your story publicly visible. Are you sure?'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Publish')),
+              ],
+            ));
+    if (confirm != true) return;
 
-    if (_writingController.text.isEmpty) {
-      _showSnackBar('Please add some content to publish your story');
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      // Simulate publishing with a delay
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() {
-        _hasUnsavedChanges = false;
-        _isSaving = false;
-      });
-      _showSnackBar('Story published successfully');
-    } catch (e) {
-      setState(() => _isSaving = false);
-      _showSnackBar('Failed to publish: ${e.toString()}');
+    bool success = await _viewModel.publishStory();
+    if (success) {
+      _showSnackBar('Story published successfully!');
+      if (mounted)
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const LibraryScreen()));
+    } else {
+      _showSnackBar('Could not publish story. Check required fields.',
+          isError: true);
     }
   }
 
   void _previewStory() {
-    if (_titleController.text.isEmpty || _writingController.text.isEmpty) {
-      _showSnackBar('Add title and content to preview your story');
+    if (_viewModel.title.trim().isEmpty) {
+      _showSnackBar('Add a title to preview.');
+      return;
+    }
+    if (_viewModel.writingContent.trim().isEmpty) {
+      _showSnackBar('Add some content to preview.');
       return;
     }
 
-    // Show preview dialog or navigate to preview screen
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        height: MediaQuery.of(context).size.height * 0.8,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _titleController.text,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            if (_coverImagePath != null)
-              Container(
-                height: 180,
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(vertical: 15),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Center(child: Text('Cover Image Preview')),
-              ),
-            if (_descriptionController.text.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                _descriptionController.text,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  _writingController.text,
-                  style: const TextStyle(fontSize: 16, height: 1.6),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (_, scrollController) {
+            return Container(
+              padding: const EdgeInsets.only(top: 10),
+              child: Column(children: [
+                Container(
+                    width: 40,
+                    height: 5,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(10))),
+                Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Preview",
+                              style: TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.bold)),
+                          IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.pop(context)),
+                        ])),
+                const Divider(),
+                Expanded(
+                    child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  children: [
+                    if (_viewModel.coverImagePath != null)
+                      ClipRRect(
+                          borderRadius: BorderRadius.circular(12.0),
+                          child: Image.file(File(_viewModel.coverImagePath!),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover)),
+                    const SizedBox(height: 15),
+                    Text(_viewModel.title,
+                        style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.background)),
+                    const SizedBox(height: 10),
+                    if (_viewModel.description.isNotEmpty)
+                      Text(_viewModel.description,
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.grey[700],
+                              height: 1.4)),
+                    const SizedBox(height: 5),
+                    if (_viewModel.selectedGenres.isNotEmpty)
+                      Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: _viewModel.selectedGenres
+                                  .map((genre) => Chip(
+                                      label: Text(genre),
+                                      backgroundColor:
+                                          AppColors.primary.withOpacity(0.1),
+                                      labelStyle: const TextStyle(
+                                          color: AppColors.primary),
+                                      side: BorderSide.none,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2)))
+                                  .toList())),
+                    const SizedBox(height: 20),
+                    SelectableText(_viewModel.writingContent,
+                        style: const TextStyle(
+                            fontSize: 16, height: 1.6, color: Colors.black87)),
+                  ],
+                )),
+              ]),
+            );
+          }),
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+  void _showSnackBar(String message, {bool isError = false}) {
+    final messenger =
+        _scaffoldMessengerKey.currentState ?? ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(
         content: Text(message),
+        backgroundColor: isError ? AppColors.tint : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(10),
-      ),
-    );
+        margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        duration: const Duration(seconds: 3)));
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    int? maxLines,
-    TextInputAction? textInputAction,
-    bool? expands,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: 15, vertical: maxLines != null ? 5 : 0),
-      decoration: BoxDecoration(
-        color: AppColors.containerBackground,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextField(
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+        padding: const EdgeInsets.only(top: 25, bottom: 12),
+        child: Text(title,
+            style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.background)));
+  }
+
+  Widget _buildStyledTextField(
+      {required TextEditingController controller,
+      required String hint,
+      int maxLines = 1,
+      TextInputType keyboardType = TextInputType.text,
+      TextInputAction textInputAction = TextInputAction.next}) {
+    return TextField(
         controller: controller,
-        cursorColor: AppColors.primary,
         maxLines: maxLines,
-        expands: expands ?? false,
+        keyboardType: keyboardType,
         textInputAction: textInputAction,
+        cursorColor: AppColors.primary,
+        style: const TextStyle(fontSize: 16),
         decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(color: Colors.grey[400]),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 15),
-        ),
-      ),
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey[400]),
+            filled: true,
+            fillColor: AppColors.containerBackground.withOpacity(0.5),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0)),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0)),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5))));
+  }
+
+  Widget _buildStoryTypeSelector(BuildContext context) {
+    final viewModel = context.watch<CreateViewModel>();
+    return SegmentedButton<String>(
+      segments: viewModel.availableStoryTypes.map((type) {
+        IconData icon;
+        switch (type) {
+          case 'Single Story':
+            icon = Icons.article_outlined;
+            break;
+          case 'Chapter-based':
+            icon = Icons.list_alt_outlined;
+            break;
+          case 'Collaborative':
+            icon = Icons.people_alt_outlined;
+            break;
+          default:
+            icon = Icons.create;
+        }
+        return ButtonSegment<String>(
+            value: type, label: Text(type), icon: Icon(icon));
+      }).toList(),
+      selected: {viewModel.selectedStoryType},
+      onSelectionChanged: (Set<String> newSelection) {
+        context.read<CreateViewModel>().selectStoryType(newSelection.first);
+      },
+      style: SegmentedButton.styleFrom(
+          backgroundColor: AppColors.containerBackground.withOpacity(0.5),
+          foregroundColor: AppColors.textGrey,
+          selectedForegroundColor: Colors.white,
+          selectedBackgroundColor: AppColors.primary,
+          side: BorderSide(color: Colors.grey[300]!),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      showSelectedIcon: false,
     );
   }
 
-  Widget _buildCoverImageSelector() {
-    return GestureDetector(
-      onTap: _pickCoverImage,
-      child: Container(
-        height: 180,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: _coverImagePath != null
-              ? Colors.transparent
-              : AppColors.containerBackground,
-          borderRadius: BorderRadius.circular(12),
-          image: _coverImagePath != null
-              ? DecorationImage(
-                  image: FileImage(File(_coverImagePath!)),
-                  fit: BoxFit.cover,
+  Widget _buildCoverImageSelector(BuildContext context) {
+    final viewModel = context.watch<CreateViewModel>();
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: GestureDetector(
+        onTap: () => context.read<CreateViewModel>().pickCoverImage(),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.containerBackground.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!, width: 1),
+            image: viewModel.coverImagePath != null
+                ? DecorationImage(
+                    image: FileImage(File(viewModel.coverImagePath!)),
+                    fit: BoxFit.cover)
+                : null,
+          ),
+          child: viewModel.coverImagePath == null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_photo_alternate_outlined,
+                          size: 40, color: Colors.grey[600]),
+                      const SizedBox(height: 8),
+                      Text('Tap to add Cover Image',
+                          style: TextStyle(
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 4),
+                      Text('(Recommended: 16:9 ratio)',
+                          style:
+                              TextStyle(color: Colors.grey[500], fontSize: 12)),
+                    ],
+                  ),
                 )
-              : null,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: _coverImagePath == null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    height: 60,
-                    width: 60,
+              : Align(
+                  alignment: Alignment.topRight,
+                  child: Container(
+                    margin: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.tint,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.tint.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(20)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                            icon: const Icon(Icons.edit,
+                                color: Colors.white, size: 18),
+                            onPressed: () => context
+                                .read<CreateViewModel>()
+                                .pickCoverImage(),
+                            tooltip: 'Change Cover Image',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints()),
+                        const SizedBox(width: 4),
+                        IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.white, size: 18),
+                            onPressed: () => context
+                                .read<CreateViewModel>()
+                                .removeCoverImage(),
+                            tooltip: 'Remove Cover Image',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints()),
+                        const SizedBox(width: 8),
                       ],
                     ),
-                    child: const Icon(Icons.add_photo_alternate_outlined,
-                        color: Colors.white, size: 30),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Add Cover Image',
-                    style: TextStyle(
-                      color: AppColors.tint,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Recommended size: 800x400',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              )
-            : Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  icon: const CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.edit, color: AppColors.tint, size: 16),
-                  ),
-                  onPressed: _pickCoverImage,
                 ),
-              ),
+        ),
       ),
     );
   }
 
-  Widget _buildGenreSelector() {
+  Widget _buildGenreSelector(BuildContext context) {
+    final viewModel = context.watch<CreateViewModel>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTextField(
-          controller: _genreController,
-          hint: 'Fiction, Fantasy, Adventure...',
-        ),
+        if (viewModel.selectedGenres.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10.0),
+            child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: viewModel.selectedGenres.map((genre) {
+                  return Chip(
+                      label: Text(genre),
+                      labelStyle: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w500),
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                      onDeleted: () =>
+                          context.read<CreateViewModel>().toggleGenre(genre),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      deleteIconColor: AppColors.primary.withOpacity(0.7),
+                      side: BorderSide.none,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      visualDensity: VisualDensity.compact);
+                }).toList()),
+          ),
+        Text(
+            viewModel.selectedGenres.isEmpty
+                ? 'Select Genres (Required)'
+                : 'Add More Genres',
+            style: TextStyle(color: Colors.grey[600], fontSize: 14)),
         const SizedBox(height: 10),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _popularGenres.map((genre) {
-            return GestureDetector(
-              onTap: () {
-                if (_genreController.text.isEmpty) {
-                  _genreController.text = genre;
-                } else if (!_genreController.text.contains(genre)) {
-                  _genreController.text = '${_genreController.text}, $genre';
-                }
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.tint.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.tint.withOpacity(0.3)),
-                ),
-                child: Text(
-                  genre,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.tint,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
+            spacing: 8,
+            runSpacing: 8,
+            children: viewModel.popularGenres
+                .where((genre) => !viewModel.selectedGenres.contains(genre))
+                .map((genre) {
+              return ActionChip(
+                  label: Text(genre),
+                  labelStyle: TextStyle(
+                      color: AppColors.textGrey, fontWeight: FontWeight.w500),
+                  backgroundColor:
+                      AppColors.containerBackground.withOpacity(0.5),
+                  side: BorderSide(color: Colors.grey[300]!),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  onPressed: () =>
+                      context.read<CreateViewModel>().toggleGenre(genre),
+                  avatar: const Icon(Icons.add,
+                      size: 16, color: AppColors.textGrey),
+                  visualDensity: VisualDensity.compact);
+            }).toList()),
       ],
     );
   }
 
-  Widget _buildWritingSection() {
+  Widget _buildWritingSection(BuildContext context) {
+    final writingContent =
+        context.select((CreateViewModel vm) => vm.writingContent);
+    int wordCount = writingContent
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((s) => s.isNotEmpty)
+        .length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Writing Tools',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.text_format, size: 20),
-                  onPressed: () {}, // Text formatting
-                  tooltip: 'Format text',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.mic, size: 20),
-                  onPressed: () {}, // Voice dictation
-                  tooltip: 'Voice dictation',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.text_fields, size: 20),
-                  onPressed: () {}, // AI assistance
-                  tooltip: 'AI writing assistance',
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
         Container(
-          height: 300,
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            border: Border.all(
-                color: AppColors.textGrey.withOpacity(0.3), width: 1),
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
-          ),
-          child: TextField(
-            controller: _writingController,
-            cursorColor: AppColors.primary,
-            maxLines: null,
-            expands: true,
-            style: const TextStyle(fontSize: 16, height: 1.6),
-            decoration: const InputDecoration(
-              hintText: 'Tap to start writing or dictating your story...',
-              border: InputBorder.none,
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              '${_writingController.text.split(' ').where((w) => w.isNotEmpty).length} words',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-          ],
-        ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+                color: AppColors.containerBackground.withOpacity(0.5),
+                borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12)),
+                border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
+            child: Row(children: [
+              _toolbarButton(Icons.format_bold, 'Bold', () {}),
+              _toolbarButton(Icons.format_italic, 'Italic', () {}),
+              _toolbarButton(Icons.format_underline, 'Underline', () {}),
+              const Spacer(),
+              Text('$wordCount words',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            ])),
+        Container(
+            height: 350,
+            decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(12),
+                    bottomRight: Radius.circular(12))),
+            child: TextField(
+              controller: _writingController,
+              maxLines: null,
+              expands: true,
+              keyboardType: TextInputType.multiline,
+              cursorColor: AppColors.primary,
+              style: const TextStyle(fontSize: 16, height: 1.5),
+              textAlignVertical: TextAlignVertical.top,
+              decoration: InputDecoration(
+                  hintText: 'Start writing your story here...',
+                  hintStyle: TextStyle(color: Colors.grey[400]),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(15)),
+            )),
       ],
     );
   }
 
-  Widget _buildActionButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          CustomButton(
-            text: 'Preview',
-            icon: Icons.visibility_outlined,
-            backgroundColor: Colors.white,
-            textColor: Colors.black87,
-            borderColor: AppColors.border,
-            onPressed: _previewStory,
-          ),
-          CustomButton(
-            text: 'Save Draft',
-            icon: Icons.save_outlined,
-            backgroundColor: Colors.white,
-            textColor: Colors.black87,
-            borderColor: AppColors.border,
-            isLoading: _isSaving,
-            onPressed: _saveDraft,
-          ),
-          CustomButton(
-            text: 'Publish',
-            icon: Icons.publish_outlined,
-            backgroundColor: AppColors.primary,
-            textColor: Colors.white,
-            onPressed: _publishStory,
-          ),
-        ],
-      ),
-    );
+  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onPressed) {
+    return IconButton(
+        icon: Icon(icon, size: 20),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        color: AppColors.textGrey,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        constraints: const BoxConstraints());
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_hasUnsavedChanges) {
-          _showUnsavedChangesDialog(0); // 0 is home screen
-          return false;
-        }
-        return true;
-      },
-      child: Scaffold(
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Create New Story',
-                        style: TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.w700),
-                      ),
-                      if (_isSaving)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Saving...',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        )
-                      else if (_hasUnsavedChanges)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Unsaved changes',
-                            style: TextStyle(color: Colors.white, fontSize: 12),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
-                  const Text(
-                    'Story Type',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 70,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _availableStoryTypes.length,
-                      itemBuilder: (context, index) {
-                        final type = _availableStoryTypes[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: StoryTypeOption(
-                            text: type,
-                            isSelected: _selectedStoryType == type,
-                            onTap: () =>
-                                setState(() => _selectedStoryType = type),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'Story Details',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildTextField(
-                    controller: _titleController,
-                    hint: 'Enter your story title...',
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildCoverImageSelector(),
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    controller: _descriptionController,
-                    hint: 'Write a short description...',
-                    maxLines: 3,
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildGenreSelector(),
-                  const SizedBox(height: 25),
-                  _buildWritingSection(),
-                  _buildActionButtons(),
-                ],
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Builder(builder: (context) {
+        final viewModel = context.watch<CreateViewModel>();
+
+        return WillPopScope(
+          onWillPop: _onWillPop,
+          child: Scaffold(
+            key: _scaffoldMessengerKey,
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              elevation: 1.0,
+              shadowColor: Colors.grey[200],
+              title: const Text('Create New Story',
+                  style: TextStyle(
+                      color: AppColors.background,
+                      fontWeight: FontWeight.bold)),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppColors.background),
+                onPressed: () => _onWillPop().then((allowPop) {
+                  if (allowPop) Navigator.of(context).pop();
+                }),
               ),
+              actions: [
+                TextButton.icon(
+                  icon: viewModel.isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation(AppColors.primary)))
+                      : const Icon(Icons.save_outlined, size: 18),
+                  label: Text(viewModel.isSaving ? 'Saving...' : 'Save Draft'),
+                  onPressed: viewModel.isSaving
+                      ? null
+                      : () async {
+                          bool success =
+                              await context.read<CreateViewModel>().saveDraft();
+                          if (mounted) {
+                            if (success)
+                              _showSnackBar('Draft saved successfully!');
+                            else
+                              _showSnackBar(
+                                  'Please enter a title to save draft.',
+                                  isError: true);
+                          }
+                        },
+                  style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                      padding: const EdgeInsets.symmetric(horizontal: 12)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.visibility_outlined,
+                      color: AppColors.textGrey),
+                  tooltip: 'Preview Story',
+                  onPressed: viewModel.isSaving ? null : _previewStory,
+                ),
+                const SizedBox(width: 5),
+              ],
+            ),
+            body: SafeArea(
+                child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader('1. Story Type'),
+                    _buildStoryTypeSelector(context),
+                    _buildSectionHeader('2. Story Details'),
+                    _buildStyledTextField(
+                        controller: _titleController,
+                        hint: 'Enter your story title',
+                        textInputAction: TextInputAction.next),
+                    const SizedBox(height: 15),
+                    _buildCoverImageSelector(context),
+                    const SizedBox(height: 15),
+                    _buildStyledTextField(
+                        controller: _descriptionController,
+                        hint: 'Write a short description or synopsis',
+                        maxLines: 3,
+                        textInputAction: TextInputAction.next),
+                    const SizedBox(height: 15),
+                    _buildGenreSelector(context),
+                    _buildSectionHeader('3. Content'),
+                    _buildWritingSection(context),
+                    const SizedBox(height: 30),
+                    SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.publish_outlined),
+                          label: const Text('Publish Story'),
+                          onPressed: viewModel.isSaving ? null : _publishStory,
+                          style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12))),
+                        )),
+                    const SizedBox(height: 20),
+                  ]),
+            )),
+            bottomNavigationBar: CustomBottomNavBar(
+              selectedIndex: _selectedNavIndex,
+              onItemTapped: _onNavItemTapped,
             ),
           ),
-        ),
-        bottomNavigationBar: CustomBottomNavBar(
-          selectedIndex: _selectedNavIndex,
-          onItemTapped: _onNavItemTapped,
-        ),
-      ),
+        );
+      }),
     );
   }
 }
