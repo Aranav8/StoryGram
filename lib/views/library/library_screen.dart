@@ -30,9 +30,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
-    // Access the globally provided ViewModel. listen:false is correct for initState.
     _viewModel = Provider.of<LibraryViewModel>(context, listen: false);
-    _viewModel.loadStories(); // Load stories when the screen initializes
+    // Correctly call loadStories AFTER the first frame if it causes notifyListeners immediately.
+    // However, if loadStories sets _isLoading = true and notifies, then fetches,
+    // it might be okay directly if the first notifyListeners is for the loading state.
+    // For safety with `addPostFrameCallback`:
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // Check if the widget is still in the tree
+        _viewModel.loadStories();
+      }
+    });
 
     _searchController.text = _viewModel.searchQuery;
     _searchController.addListener(() {
@@ -611,57 +619,103 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrap with ChangeNotifierProvider if LibraryViewModel is created here.
-    // If provided higher up, Builder is fine.
-    // For safety and if LibraryViewModel is specific to this screen's lifecycle,
-    // it's often better to create and provide it here, or ensure it's correctly managed.
-    // Assuming it's provided by a parent widget or you initialize it in initState.
+    final viewModel = context.watch<LibraryViewModel>();
 
-    return Builder(
-      // Using Builder to get context that can access the Provider if needed
-      builder: (context) {
-        final viewModel = context.watch<
-            LibraryViewModel>(); // Now this will work if Provider is above
-
-        return Scaffold(
-          backgroundColor: Colors.grey[50],
-          appBar: _buildAppBar(context),
-          body: SafeArea(
-            child: viewModel.isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary))
-                : viewModel.filteredStories.isNotEmpty
-                    ? ListView.builder(
-                        padding: const EdgeInsets.all(15),
-                        itemCount: viewModel.filteredStories.length,
-                        itemBuilder: (ctx, index) => _buildStoryItem(
-                            ctx, viewModel.filteredStories[index]),
-                      )
-                    : Center(
-                        child: Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: EmptyState(
-                              icon: Icons.menu_book,
-                              title: viewModel.isSearchActive ||
-                                      viewModel.selectedStatuses.isNotEmpty ||
-                                      viewModel.selectedTypes.isNotEmpty
-                                  ? 'No Matching Stories'
-                                  : 'Your Library is Empty',
-                              message: viewModel.isSearchActive ||
-                                      viewModel.selectedStatuses.isNotEmpty ||
-                                      viewModel.selectedTypes.isNotEmpty
-                                  ? 'Try adjusting your search or filters.'
-                                  : 'Start creating your first story!',
-                              actionLabel: 'Create New Story',
-                              onAction: _navigateToCreateScreen,
-                            ))),
-          ),
-          bottomNavigationBar: CustomBottomNavBar(
-            selectedIndex: _selectedNavIndex,
-            onItemTapped: _onNavItemTapped,
-          ),
-        );
-      },
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: _buildAppBar(context), // Assuming _buildAppBar is defined
+      body: SafeArea(
+        child: Builder(
+          // Using Builder to ensure context is fresh for RefreshIndicator
+          builder: (context) {
+            if (viewModel.isLoading &&
+                viewModel.filteredStories.isEmpty &&
+                viewModel.errorMessage == null) {
+              // Show loader only if truly loading initial data
+              return const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary));
+            } else if (viewModel.errorMessage != null) {
+              // Prioritize showing error
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline,
+                          color: Colors.red[700], size: 50),
+                      const SizedBox(height: 15),
+                      Text(
+                        'Something went wrong',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red[700]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        viewModel.errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[700]),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                        onPressed: () =>
+                            viewModel.loadStories(forceRefresh: true),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            } else if (viewModel.filteredStories.isNotEmpty) {
+              return RefreshIndicator(
+                // Add RefreshIndicator here
+                onRefresh: () => viewModel.loadStories(forceRefresh: true),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(15),
+                  itemCount: viewModel.filteredStories.length,
+                  itemBuilder: (ctx, index) => _buildStoryItem(
+                      ctx,
+                      viewModel.filteredStories[
+                          index]), // Assuming _buildStoryItem is defined
+                ),
+              );
+            } else {
+              // No error, not loading, but stories are empty
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: EmptyState(
+                    icon: Icons.menu_book,
+                    title: viewModel.isSearchActive ||
+                            viewModel.selectedStatuses.isNotEmpty ||
+                            viewModel.selectedTypes.isNotEmpty
+                        ? 'No Matching Stories'
+                        : 'Your Library is Empty',
+                    message: viewModel.isSearchActive ||
+                            viewModel.selectedStatuses.isNotEmpty ||
+                            viewModel.selectedTypes.isNotEmpty
+                        ? 'Try adjusting your search or filters.'
+                        : 'Start creating your first story!',
+                    actionLabel: 'Create New Story',
+                    onAction:
+                        _navigateToCreateScreen, // Assuming _navigateToCreateScreen is defined
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+      ),
+      bottomNavigationBar: CustomBottomNavBar(
+        selectedIndex: _selectedNavIndex,
+        onItemTapped: _onNavItemTapped, // Assuming _onNavItemTapped is defined
+      ),
     );
   }
 }

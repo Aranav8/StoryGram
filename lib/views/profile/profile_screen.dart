@@ -3,10 +3,13 @@ import 'package:collabwrite/core/constants/colors.dart';
 import 'package:collabwrite/data/models/user_model.dart';
 import 'package:collabwrite/viewmodel/profile_viewmodel.dart';
 import 'package:collabwrite/views/widgets/custom_bottom_nav_bar.dart';
-import 'package:flutter/gestures.dart';
+// import 'package:flutter/gestures.dart'; // Not used, can be removed
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+
+// Import the aliased story model
+import 'package:collabwrite/data/models/story_model.dart' as data_story_model;
 
 import '../create/create_screen.dart';
 import '../home/home_screen.dart';
@@ -43,7 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       const HomeScreen(),
       const CreateScreen(),
       const LibraryScreen(),
-      const ProfileScreen(),
+      const ProfileScreen(), // Current screen, navigation handled by if condition
     ];
     Navigator.pushReplacement(
       context,
@@ -57,14 +60,63 @@ class _ProfileScreenState extends State<ProfileScreen>
       create: (_) => ProfileViewModel(),
       child: Consumer<ProfileViewModel>(
         builder: (context, viewModel, child) {
-          if (viewModel.isLoading || viewModel.user == null) {
-            // Show loading indicator
-            return const Scaffold(
-              body: Center(
+          if (viewModel.isLoading) {
+            return Scaffold(
+              // MODIFIED: Removed 'const'
+              body: const Center(
+                // Added 'const' to Center and CircularProgressIndicator
                 child: CircularProgressIndicator(),
+              ),
+              bottomNavigationBar: CustomBottomNavBar(
+                selectedIndex: _selectedNavIndex,
+                onItemTapped: _onNavItemTapped,
               ),
             );
           }
+
+          if (viewModel.errorMessage != null) {
+            return Scaffold(
+              // This was already non-const, which is correct
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Error: ${viewModel.errorMessage}\nPlease try again later.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red, fontSize: 16),
+                  ),
+                ),
+              ),
+              bottomNavigationBar: CustomBottomNavBar(
+                selectedIndex: _selectedNavIndex,
+                onItemTapped: _onNavItemTapped,
+              ),
+            );
+          }
+
+          if (viewModel.user == null) {
+            return Scaffold(
+              // This was already non-const, which is correct
+              body: const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'Could not load user profile.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.textGrey,
+                        fontSize:
+                            16), // Can be const if AppColors.textGrey is const
+                  ),
+                ),
+              ),
+              bottomNavigationBar: CustomBottomNavBar(
+                selectedIndex: _selectedNavIndex,
+                onItemTapped: _onNavItemTapped,
+              ),
+            );
+          }
+
           return Scaffold(
             body: SafeArea(
               child: Column(
@@ -117,13 +169,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                     IconButton(
                       icon: SvgPicture.asset(
                         AppAssets.notification,
+                        // ignore: deprecated_member_use
                         color: Colors.white,
+                        width: 24, // Added explicit size
+                        height: 24, // Added explicit size
                       ),
-                      onPressed: () {},
+                      onPressed: () {
+                        // TODO: Notification action
+                      },
                     ),
                     IconButton(
                       icon: const Icon(Icons.settings, color: Colors.white),
-                      onPressed: () {},
+                      onPressed: () {
+                        // TODO: Settings action
+                      },
                     ),
                   ],
                 ),
@@ -159,13 +218,16 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           child: CircleAvatar(
             radius: 40,
-            backgroundImage: user.profileImage != null
-                ? NetworkImage(user.profileImage!)
-                : null,
+            backgroundImage:
+                user.profileImage != null && user.profileImage!.isNotEmpty
+                    ? NetworkImage(user.profileImage!)
+                    : null,
             backgroundColor: AppColors.secondary,
-            child: user.profileImage == null
+            child: user.profileImage == null || user.profileImage!.isEmpty
                 ? Text(
-                    user.name.substring(0, 1).toUpperCase(),
+                    user.name.isNotEmpty
+                        ? user.name.substring(0, 1).toUpperCase()
+                        : '?',
                     style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
@@ -241,16 +303,19 @@ class _ProfileScreenState extends State<ProfileScreen>
                 fontSize: 12,
               ),
             ),
-            const SizedBox(width: 8),
-            // const Icon(Icons.link, color: AppColors.textGrey, size: 14),
-            // const SizedBox(width: 2),
-            // Text(
-            //   user.website,
-            //   style: const TextStyle(
-            //     color: AppColors.primary,
-            //     fontSize: 12,
+            // Website link can be added here if user.website is available and not null/empty
+            // const SizedBox(width: 8),
+            // if (user.website != null && user.website!.isNotEmpty) ...[
+            //   const Icon(Icons.link, color: AppColors.textGrey, size: 14),
+            //   const SizedBox(width: 2),
+            //   Text(
+            //     user.website!,
+            //     style: const TextStyle(
+            //       color: AppColors.primary,
+            //       fontSize: 12,
+            //     ),
             //   ),
-            // ),
+            // ]
           ],
         ),
       ],
@@ -258,16 +323,21 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildEditButton() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        child: Text(
-          'Edit',
-          style: TextStyle(color: Colors.white, fontSize: 12),
+    return GestureDetector(
+      onTap: () {
+        // TODO: Navigate to Edit Profile Screen
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+          child: Text(
+            'Edit',
+            style: TextStyle(color: Colors.white, fontSize: 12),
+          ),
         ),
       ),
     );
@@ -343,6 +413,57 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  Widget _buildStoryCoverImage(String? coverImageUrl) {
+    if (coverImageUrl != null && coverImageUrl.isNotEmpty) {
+      // A common pattern to check if it's an asset or network
+      bool isNetworkImage = coverImageUrl.startsWith('http://') ||
+          coverImageUrl.startsWith('https://');
+      bool isAssetImage = coverImageUrl.startsWith('assets/');
+
+      if (isNetworkImage) {
+        return Image.network(
+          coverImageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _defaultCoverImagePlaceholder(),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+                color: AppColors.primary,
+              ),
+            );
+          },
+        );
+      } else if (isAssetImage) {
+        return Image.asset(
+          coverImageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _defaultCoverImagePlaceholder(),
+        );
+      }
+    }
+    return _defaultCoverImagePlaceholder();
+  }
+
+  Widget _defaultCoverImagePlaceholder() {
+    return Container(
+      color: AppColors.secondary.withOpacity(0.5),
+      child: const Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: AppColors.textGrey,
+          size: 40,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMyStoriesTab(ProfileViewModel viewModel) {
     return viewModel.userStories.isEmpty
         ? _buildEmptyState('You haven\'t published any stories yet.',
@@ -371,7 +492,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _buildCollaborationsTab(ProfileViewModel viewModel) {
     return viewModel.collaborationStories.isEmpty
         ? _buildEmptyState('You haven\'t collaborated on any stories yet.',
-            'Find collaborators', () {})
+            'Find collaborators', () {
+            // TODO: Navigate to a discovery/collaboration screen
+          })
         : ListView.builder(
             padding: const EdgeInsets.all(15),
             itemCount: viewModel.collaborationStories.length,
@@ -415,8 +538,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.book_outlined,
+            const Icon(
+              Icons.menu_book_outlined,
               size: 60,
               color: AppColors.textGrey,
             ),
@@ -424,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 color: AppColors.textGrey,
               ),
@@ -454,121 +577,68 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildStoryItem(Story story) {
+  Widget _buildStoryItem(data_story_model.Story story) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.secondary,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.none,
+          color: AppColors.secondary,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            )
+          ]),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              AspectRatio(
-                aspectRatio: 1.5,
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.visibility,
-                        color: Colors.white,
-                        size: 12,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatCount(story.views),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            flex: 3,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Text(
-                  story.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                _buildStoryCoverImage(story.coverImage),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.visibility_outlined,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatCount(story.views),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.favorite,
-                      color: Colors.red,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatCount(story.likes),
-                      style: const TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDate(story.publishedDate),
-                      style: const TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCollaborationItem(Story story) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      decoration: BoxDecoration(
-        color: AppColors.secondary,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(12),
-              bottomLeft: Radius.circular(12),
-            ),
-          ),
           Expanded(
+            flex: 2,
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     story.title,
@@ -577,40 +647,112 @@ class _ProfileScreenState extends State<ProfileScreen>
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Collaboration',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 10,
-                          ),
-                        ),
+                      const Icon(
+                        Icons.favorite_border_outlined,
+                        color: Colors.redAccent,
+                        size: 14,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                       Text(
-                        _formatDate(story.publishedDate),
+                        _formatCount(story.likes),
                         style: const TextStyle(
                           color: AppColors.textGrey,
                           fontSize: 12,
                         ),
                       ),
+                      const Spacer(),
+                      Text(
+                        _formatDate(story.publishedDate),
+                        style: const TextStyle(
+                          color: AppColors.textGrey,
+                          fontSize: 10,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollaborationItem(data_story_model.Story story) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+          color: AppColors.secondary,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            )
+          ]),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            height: 100,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _buildStoryCoverImage(story.coverImage),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  story.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Collaboration',
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _formatDate(story.publishedDate),
+                      style: const TextStyle(
+                        color: AppColors.textGrey,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -627,12 +769,16 @@ class _ProfileScreenState extends State<ProfileScreen>
     return count.toString();
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'N/A';
+    }
     final now = DateTime.now();
     final difference = now.difference(date);
 
     if (difference.inDays < 1) {
       if (difference.inHours < 1) {
+        if (difference.inMinutes < 1) return 'just now';
         return '${difference.inMinutes}m ago';
       }
       return '${difference.inHours}h ago';

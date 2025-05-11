@@ -28,40 +28,34 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: (json['id'] as num?)?.toInt() ??
-          (json['user_id'] as num?)?.toInt() ??
-          0,
-      name: json['name'] as String? ??
-          json['author_name'] as String? ??
-          'Unknown',
-      bio: json['bio'] as String? ?? '',
-      profileImage:
-          json['profile_image'] as String? ?? json['profileImage'] as String?,
-      location: json['location'] as String? ?? '',
-      website: json['website'] as String?,
-      followers: (json['followers'] as num?)?.toInt() ?? 0,
-      following: (json['following'] as num?)?.toInt() ?? 0,
-      stories: (json['stories'] as num?)?.toInt() ?? 0,
-      isVerified:
-          json['is_verified'] as bool? ?? json['isVerified'] as bool? ?? false,
+      id: (json['ID'] as num?)?.toInt() ?? 0,
+      name: json['Name'] as String? ?? 'Unknown',
+      bio: json['Bio'] as String? ?? '',
+      profileImage: json['ProfileImage'] as String?,
+      location: json['Location'] as String? ?? '',
+      website: json['Website'] as String?,
+      followers: (json['Followers'] as num?)?.toInt() ?? 0,
+      following: (json['Following'] as num?)?.toInt() ?? 0,
+      stories: (json['StoriesCount'] as num?)?.toInt() ?? 0,
+      isVerified: json['IsVerified'] as bool? ?? false,
     );
   }
 
   Map<String, dynamic> toJson() {
     final payload = {
-      'user_id': id,
-      'name': name,
-      'bio': bio,
-      'profile_image': profileImage,
-      'location': location,
-      'website': website,
-      'followers': followers,
-      'following': following,
-      'stories': stories,
-      'is_verified': isVerified,
+      'ID': id,
+      'Name': name,
+      'Bio': bio,
+      'ProfileImage': profileImage,
+      'Location': location,
+      'Website': website,
+      'Followers': followers,
+      'Following': following,
+      'StoriesCount': stories,
+      'IsVerified': isVerified,
     };
     if (kDebugMode) {
-      print('User.toJson: Generated payload: $payload');
+      print('User.toJson: $payload');
     }
     return payload;
   }

@@ -27,9 +27,8 @@ class _CreateScreenState extends State<CreateScreen> {
   late TextEditingController _writingController;
 
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
-      GlobalKey<ScaffoldMessengerState>();
-  bool _isControllersInitialized =
-      false; // Flag to prevent controller overwrite
+  GlobalKey<ScaffoldMessengerState>();
+  bool _isControllersInitialized = false; // Flag to prevent controller overwrite
 
   @override
   void initState() {
@@ -69,8 +68,7 @@ class _CreateScreenState extends State<CreateScreen> {
         Future.delayed(Duration.zero, () {
           if (_titleController.text != viewModel.title) {
             viewModel.setTitle(_titleController.text);
-            print(
-                "CreateScreen: Updated viewModel.title = ${_titleController.text}");
+            print("CreateScreen: Updated viewModel.title = ${_titleController.text}");
           }
         });
       });
@@ -80,8 +78,7 @@ class _CreateScreenState extends State<CreateScreen> {
         Future.delayed(Duration.zero, () {
           if (_descriptionController.text != viewModel.description) {
             viewModel.setDescription(_descriptionController.text);
-            print(
-                "CreateScreen: Updated viewModel.description = ${_descriptionController.text}");
+            print("CreateScreen: Updated viewModel.description = ${_descriptionController.text}");
           }
         });
       });
@@ -91,8 +88,7 @@ class _CreateScreenState extends State<CreateScreen> {
         Future.delayed(Duration.zero, () {
           if (_writingController.text != viewModel.writingContent) {
             viewModel.setWritingContent(_writingController.text);
-            print(
-                "CreateScreen: Updated viewModel.writingContent = ${_writingController.text}");
+            print("CreateScreen: Updated viewModel.writingContent = ${_writingController.text}");
           }
         });
       });
@@ -154,8 +150,7 @@ class _CreateScreenState extends State<CreateScreen> {
               Navigator.pop(context);
               onDiscard();
             },
-            child:
-                const Text('Discard', style: TextStyle(color: AppColors.tint)),
+            child: const Text('Discard', style: TextStyle(color: AppColors.tint)),
           ),
           TextButton(
             onPressed: () async {
@@ -301,55 +296,55 @@ class _CreateScreenState extends State<CreateScreen> {
                 const Divider(),
                 Expanded(
                     child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  children: [
-                    if (viewModel.coverImagePath != null)
-                      ClipRRect(
-                          borderRadius: BorderRadius.circular(12.0),
-                          child: Image.file(File(viewModel.coverImagePath!),
-                              height: 180,
-                              width: double.infinity,
-                              fit: BoxFit.cover)),
-                    const SizedBox(height: 15),
-                    Text(viewModel.title,
-                        style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.background)),
-                    const SizedBox(height: 10),
-                    if (viewModel.description.isNotEmpty)
-                      Text(viewModel.description,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey[700],
-                              height: 1.4)),
-                    const SizedBox(height: 5),
-                    if (viewModel.selectedGenres.isNotEmpty)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: viewModel.selectedGenres
-                                  .map((genre) => Chip(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      children: [
+                        if (viewModel.coverImagePath != null)
+                          ClipRRect(
+                              borderRadius: BorderRadius.circular(12.0),
+                              child: Image.file(File(viewModel.coverImagePath!),
+                                  height: 180,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover)),
+                        const SizedBox(height: 15),
+                        Text(viewModel.title,
+                            style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.background)),
+                        const SizedBox(height: 10),
+                        if (viewModel.description.isNotEmpty)
+                          Text(viewModel.description,
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey[700],
+                                  height: 1.4)),
+                        const SizedBox(height: 5),
+                        if (viewModel.selectedGenres.isNotEmpty)
+                          Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: viewModel.selectedGenres
+                                      .map((genre) => Chip(
                                       label: Text(genre),
                                       backgroundColor:
-                                          AppColors.primary.withOpacity(0.1),
+                                      AppColors.primary.withOpacity(0.1),
                                       labelStyle: const TextStyle(
                                           color: AppColors.primary),
                                       side: BorderSide.none,
                                       visualDensity: VisualDensity.compact,
                                       padding: EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 2)))
-                                  .toList())),
-                    const SizedBox(height: 20),
-                    SelectableText(viewModel.writingContent,
-                        style: const TextStyle(
-                            fontSize: 16, height: 1.6, color: Colors.black87)),
-                  ],
-                )),
+                                      .toList())),
+                        const SizedBox(height: 20),
+                        SelectableText(viewModel.writingContent,
+                            style: const TextStyle(
+                                fontSize: 16, height: 1.6, color: Colors.black87)),
+                      ],
+                    )),
               ]),
             );
           }),
@@ -401,8 +396,7 @@ class _CreateScreenState extends State<CreateScreen> {
         hintStyle: TextStyle(color: Colors.grey[400]),
         filled: true,
         fillColor: Colors.white, // Use solid white for better contrast
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
@@ -469,70 +463,69 @@ class _CreateScreenState extends State<CreateScreen> {
             border: Border.all(color: Colors.grey[300]!, width: 1),
             image: viewModel.coverImagePath != null
                 ? DecorationImage(
-                    image: FileImage(File(viewModel.coverImagePath!)),
-                    fit: BoxFit.cover,
-                  )
+              image: FileImage(File(viewModel.coverImagePath!)),
+              fit: BoxFit.cover,
+            )
                 : null,
           ),
           child: viewModel.coverImagePath == null
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.add_photo_alternate_outlined,
-                          size: 40, color: Colors.grey[600]),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap to add Cover Image',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '(Recommended: 16:9 ratio)',
-                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                )
-              : Align(
-                  alignment: Alignment.topRight,
-                  child: Container(
-                    margin: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit,
-                              color: Colors.white, size: 18),
-                          onPressed: () =>
-                              context.read<CreateViewModel>().pickCoverImage(),
-                          tooltip: 'Change Cover Image',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.white, size: 18),
-                          onPressed: () => context
-                              .read<CreateViewModel>()
-                              .removeCoverImage(),
-                          tooltip: 'Remove Cover Image',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_photo_alternate_outlined,
+                    size: 40, color: Colors.grey[600]),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap to add Cover Image',
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  '(Recommended: 16:9 ratio)',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+              ],
+            ),
+          )
+              : Align(
+            alignment: Alignment.topRight,
+            child: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit,
+                        color: Colors.white, size: 18),
+                    onPressed: () =>
+                        context.read<CreateViewModel>().pickCoverImage(),
+                    tooltip: 'Change Cover Image',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline,
+                        color: Colors.white, size: 18),
+                    onPressed: () =>
+                        context.read<CreateViewModel>().removeCoverImage(),
+                    tooltip: 'Remove Cover Image',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -596,8 +589,7 @@ class _CreateScreenState extends State<CreateScreen> {
               ),
               onPressed: () =>
                   context.read<CreateViewModel>().toggleGenre(genre),
-              avatar:
-                  const Icon(Icons.add, size: 16, color: AppColors.textGrey),
+              avatar: const Icon(Icons.add, size: 16, color: AppColors.textGrey),
               visualDensity: VisualDensity.compact,
             );
           }).toList(),
@@ -608,7 +600,7 @@ class _CreateScreenState extends State<CreateScreen> {
 
   Widget _buildWritingSection(BuildContext context) {
     final writingContent =
-        context.select((CreateViewModel vm) => vm.writingContent);
+    context.select((CreateViewModel vm) => vm.writingContent);
     int wordCount = writingContent
         .trim()
         .split(RegExp(r'\s+'))
@@ -716,13 +708,13 @@ class _CreateScreenState extends State<CreateScreen> {
             TextButton.icon(
               icon: viewModel.isSaving
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                      ),
-                    )
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                ),
+              )
                   : const Icon(Icons.save_outlined, size: 18),
               label: Text(viewModel.isSaving ? 'Saving...' : 'Save Draft'),
               onPressed: viewModel.isSaving ? null : _saveDraft,
