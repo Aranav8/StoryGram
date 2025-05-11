@@ -109,7 +109,7 @@ class LibraryViewModel extends ChangeNotifier {
     _filteredStories = filtered;
   }
 
-  Future<bool> deleteStory(String storyId) async {
+  Future<bool> deleteStory(int storyId) async {
     print("Deleting story: $storyId");
     await Future.delayed(const Duration(milliseconds: 500));
 
@@ -119,7 +119,7 @@ class LibraryViewModel extends ChangeNotifier {
     return true;
   }
 
-  Future<bool> updateStoryStatus(String storyId, StoryStatus newStatus) async {
+  Future<bool> updateStoryStatus(int storyId, StoryStatus newStatus) async {
     print("Updating status for $storyId to $newStatus");
     await Future.delayed(const Duration(milliseconds: 300));
 

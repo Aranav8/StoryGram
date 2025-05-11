@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+// lib/data/models/user_model.dart
+import 'package:flutter/foundation.dart';
 
 class User {
-  final String id;
+  final int id;
   final String name;
   final String bio;
   final String? profileImage;
@@ -24,30 +25,118 @@ class User {
     required this.stories,
     this.isVerified = false,
   });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: (json['id'] as num?)?.toInt() ??
+          (json['user_id'] as num?)?.toInt() ??
+          0,
+      name: json['name'] as String? ??
+          json['author_name'] as String? ??
+          'Unknown',
+      bio: json['bio'] as String? ?? '',
+      profileImage:
+          json['profile_image'] as String? ?? json['profileImage'] as String?,
+      location: json['location'] as String? ?? '',
+      website: json['website'] as String?,
+      followers: (json['followers'] as num?)?.toInt() ?? 0,
+      following: (json['following'] as num?)?.toInt() ?? 0,
+      stories: (json['stories'] as num?)?.toInt() ?? 0,
+      isVerified:
+          json['is_verified'] as bool? ?? json['isVerified'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final payload = {
+      'user_id': id,
+      'name': name,
+      'bio': bio,
+      'profile_image': profileImage,
+      'location': location,
+      'website': website,
+      'followers': followers,
+      'following': following,
+      'stories': stories,
+      'is_verified': isVerified,
+    };
+    if (kDebugMode) {
+      print('User.toJson: Generated payload: $payload');
+    }
+    return payload;
+  }
 }
 
+// lib/data/models/story_model.dart
+
 class Story {
-  final String id;
+  final int id;
   final String title;
   final String description;
-  final String image;
-  final String author;
+  final String? coverImage;
+  final int userId;
   final int likes;
   final int views;
   final DateTime publishedDate;
-  final List<User> collaborators;
-  final bool isDraft;
+  final DateTime lastEdited;
+  final String storyType;
+  final String status;
+  final List<String> genres;
 
   Story({
     required this.id,
     required this.title,
     required this.description,
-    required this.image,
-    required this.author,
-    required this.likes,
-    required this.views,
+    this.coverImage,
+    required this.userId,
+    this.likes = 0,
+    this.views = 0,
     required this.publishedDate,
-    this.collaborators = const [],
-    this.isDraft = false,
+    required this.lastEdited,
+    required this.storyType,
+    required this.status,
+    this.genres = const [],
   });
+
+  factory Story.fromJson(Map<String, dynamic> json) {
+    return Story(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? 'Untitled Story',
+      description: json['description'] as String? ?? '',
+      coverImage: json['cover_image'] as String? ?? json['image'] as String?,
+      userId: (json['user_id'] as num?)?.toInt() ??
+          (json['author_id'] as num?)?.toInt() ??
+          0,
+      likes: (json['likes'] as num?)?.toInt() ?? 0,
+      views: (json['views'] as num?)?.toInt() ?? 0,
+      publishedDate: json['published_date'],
+      lastEdited: DateTime.parse(json['last_edited'] as String? ??
+          json['lastEdited'] as String? ??
+          DateTime.now().toIso8601String()),
+      storyType: json['story_type'] as String? ?? 'Fiction',
+      status: json['status'] as String? ?? 'draft',
+      genres: (json['genres'] as List<dynamic>?)?.cast<String>() ?? [],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final payload = {
+      'id': id,
+      'title': title,
+      'description': description,
+      'cover_image': coverImage ?? '',
+      'user_id': userId.toInt(), // Explicitly ensure integer
+      'likes': likes,
+      'views': views,
+      'published_date': publishedDate?.toIso8601String(),
+      'last_edited': lastEdited.toIso8601String(),
+      'story_type': storyType,
+      'status': status,
+      'genres': genres,
+    };
+    if (kDebugMode) {
+      print('Story.toJson: Generated payload: $payload');
+    }
+    return payload;
+  }
 }

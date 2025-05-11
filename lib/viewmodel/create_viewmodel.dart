@@ -1,7 +1,11 @@
+// viewmodel/create_viewmodel.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:collabwrite/data/models/story_model.dart';
+import 'package:collabwrite/services/story_service.dart';
+import 'package:collabwrite/services/auth_service.dart';
+import 'package:flutter/foundation.dart'; // For kDebugMode
 
 class CreateViewModel extends ChangeNotifier {
   String _title = '';
@@ -13,7 +17,11 @@ class CreateViewModel extends ChangeNotifier {
 
   bool _isSaving = false;
   bool _hasUnsavedChanges = false;
-  String? _editingStoryId;
+  int? _editingStoryId;
+  bool _isPickingImage = false; // Prevent multiple picker calls
+
+  final StoryService _storyService = StoryService();
+  final AuthService _authService = AuthService();
 
   String get title => _title;
   String get description => _description;
@@ -62,6 +70,16 @@ class CreateViewModel extends ChangeNotifier {
       _coverImagePath = null;
       _hasUnsavedChanges = false;
     }
+    if (kDebugMode) {
+      print(
+          "CreateViewModel: Initialized with draftStory: ${draftStory?.title ?? 'none'}");
+      print(
+          "CreateViewModel: title = $_title, description = $_description, writingContent = $_writingContent");
+    }
+    // Defer notifyListeners to avoid calling during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _setUnsavedChanges() {
@@ -75,6 +93,9 @@ class CreateViewModel extends ChangeNotifier {
     if (_title != value) {
       _title = value;
       _setUnsavedChanges();
+      if (kDebugMode) {
+        print("CreateViewModel: setTitle called with value: $value");
+      }
     }
   }
 
@@ -82,6 +103,9 @@ class CreateViewModel extends ChangeNotifier {
     if (_description != value) {
       _description = value;
       _setUnsavedChanges();
+      if (kDebugMode) {
+        print("CreateViewModel: setDescription called with value: $value");
+      }
     }
   }
 
@@ -89,6 +113,9 @@ class CreateViewModel extends ChangeNotifier {
     if (_writingContent != value) {
       _writingContent = value;
       _setUnsavedChanges();
+      if (kDebugMode) {
+        print("CreateViewModel: setWritingContent called with value: $value");
+      }
     }
   }
 
@@ -111,16 +138,25 @@ class CreateViewModel extends ChangeNotifier {
   }
 
   Future<void> pickCoverImage() async {
+    if (_isPickingImage) return; // Prevent multiple calls
+    _isPickingImage = true;
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
-        _coverImagePath = image.path;
+        _coverImagePath = image.path; // Store local path for preview
         _setUnsavedChanges();
+        if (kDebugMode) {
+          print("CreateViewModel: Picked image: ${_coverImagePath}");
+        }
         notifyListeners();
       }
     } catch (e) {
-      print("Error picking image: $e");
+      if (kDebugMode) {
+        print("CreateViewModel: Error picking image: $e");
+      }
+    } finally {
+      _isPickingImage = false;
     }
   }
 
@@ -128,86 +164,169 @@ class CreateViewModel extends ChangeNotifier {
     if (_coverImagePath != null) {
       _coverImagePath = null;
       _setUnsavedChanges();
+      if (kDebugMode) {
+        print("CreateViewModel: Removed cover image");
+      }
       notifyListeners();
     }
   }
 
   Future<bool> saveDraft() async {
     if (title.trim().isEmpty) {
-      print("Validation Error: Title is required to save draft.");
+      if (kDebugMode) {
+        print(
+            "CreateViewModel: Validation Error: Title is required to save draft.");
+      }
       return false;
     }
 
     _isSaving = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(seconds: 1));
-
-    String currentUserId = "user_123";
-    String currentUserName = "Current User";
+    final userId = await _authService.getCurrentUserId();
+    if (userId == null) {
+      _isSaving = false;
+      notifyListeners();
+      if (kDebugMode) {
+        print("CreateViewModel: Error: User not logged in.");
+      }
+      return false; // UI will handle this error
+    }
 
     final storyToSave = Story(
-      id: _editingStoryId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _editingStoryId ?? DateTime.now().millisecondsSinceEpoch.toInt(),
       title: _title,
       description: _description,
-      coverImage: _coverImagePath,
-      authorId: currentUserId,
-      authorName: currentUserName,
+      coverImage: '', // Send empty string since we can't upload images
+      authorId: userId,
+      authorName: "Current User", // Ideally fetch from user profile
       lastEdited: DateTime.now(),
       storyType: _selectedStoryType,
       status: StoryStatus.draft,
       genres: _selectedGenres,
+      chapters: _writingContent.trim().isNotEmpty
+          ? [
+              Chapter(
+                id: 'chapter_${DateTime.now().millisecondsSinceEpoch}',
+                title: 'Chapter 1',
+                content: _writingContent,
+                isComplete: false,
+              )
+            ]
+          : [],
     );
 
-    print("Saving draft: ${storyToSave.title}");
+    if (kDebugMode) {
+      print(
+          "CreateViewModel: Saving draft with ID: ${storyToSave.id}, Title: ${storyToSave.title}, User ID: $userId");
+    }
+
+    final success = await _storyService.createStory(storyToSave);
 
     _isSaving = false;
-    _hasUnsavedChanges = false;
+    if (success) {
+      _hasUnsavedChanges = false;
+      _editingStoryId = storyToSave.id; // Update ID for future saves
+      if (kDebugMode) {
+        print("CreateViewModel: Draft saved successfully");
+      }
+    } else {
+      if (kDebugMode) {
+        print("CreateViewModel: Failed to save draft");
+      }
+    }
     notifyListeners();
-    return true;
+    return success;
   }
 
   Future<bool> publishStory() async {
     if (title.trim().isEmpty) {
-      print("Validation Error: Title is required.");
+      if (kDebugMode) {
+        print("CreateViewModel: Validation Error: Title is required.");
+      }
       return false;
     }
     if (writingContent.trim().isEmpty) {
-      print("Validation Error: Content is required.");
+      if (kDebugMode) {
+        print("CreateViewModel: Validation Error: Content is required.");
+      }
       return false;
     }
     if (selectedGenres.isEmpty) {
-      print("Validation Error: At least one genre is required.");
+      if (kDebugMode) {
+        print(
+            "CreateViewModel: Validation Error: At least one genre is required.");
+      }
       return false;
     }
 
     _isSaving = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(seconds: 2));
-
-    String currentUserId = "user_123";
-    String currentUserName = "Current User";
+    final userId = await _authService.getCurrentUserId();
+    if (userId == null) {
+      _isSaving = false;
+      notifyListeners();
+      if (kDebugMode) {
+        print("CreateViewModel: Error: User not logged in.");
+      }
+      return false; // UI will handle this error
+    }
 
     final storyToPublish = Story(
-      id: _editingStoryId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _editingStoryId ?? DateTime.now().millisecondsSinceEpoch.toInt(),
       title: _title,
       description: _description,
-      coverImage: _coverImagePath,
-      authorId: currentUserId,
-      authorName: currentUserName,
+      coverImage: '', // Send empty string since we can't upload images
+      authorId: userId,
+      authorName: "Current User", // Ideally fetch from user profile
       lastEdited: DateTime.now(),
       publishedDate: DateTime.now(),
       storyType: _selectedStoryType,
       status: StoryStatus.published,
       genres: _selectedGenres,
+      chapters: [
+        Chapter(
+          id: 'chapter_${DateTime.now().millisecondsSinceEpoch}',
+          title: 'Chapter 1',
+          content: _writingContent,
+          isComplete: true,
+        )
+      ],
     );
 
-    print("Publishing story: ${storyToPublish.title}");
+    if (kDebugMode) {
+      print(
+          "CreateViewModel: Publishing story with ID: ${storyToPublish.id}, Title: ${storyToPublish.title}, User ID: $userId");
+    }
+
+    final success = await _storyService.createStory(storyToPublish);
 
     _isSaving = false;
-    _hasUnsavedChanges = false;
+    if (success) {
+      _hasUnsavedChanges = false;
+      _editingStoryId = storyToPublish.id;
+      if (kDebugMode) {
+        print("CreateViewModel: Story published successfully");
+      }
+    } else {
+      if (kDebugMode) {
+        print("CreateViewModel: Failed to publish story");
+      }
+    }
     notifyListeners();
-    return true;
+    return success;
+  }
+
+  Future<String?> getCurrentUserId() async {
+    return await _authService.getCurrentUserId();
+  }
+
+  @override
+  void dispose() {
+    if (kDebugMode) {
+      print("CreateViewModel: Disposed");
+    }
+    super.dispose();
   }
 }

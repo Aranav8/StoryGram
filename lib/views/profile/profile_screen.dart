@@ -468,10 +468,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             children: [
               AspectRatio(
                 aspectRatio: 1.5,
-                child: Image.asset(
-                  story.image,
-                  fit: BoxFit.cover,
-                ),
               ),
               Positioned(
                 top: 8,
@@ -567,12 +563,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               topLeft: Radius.circular(12),
               bottomLeft: Radius.circular(12),
             ),
-            child: Image.asset(
-              story.image,
-              height: 100,
-              width: 80,
-              fit: BoxFit.cover,
-            ),
           ),
           Expanded(
             child: Padding(
@@ -619,36 +609,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      ...List.generate(
-                        story.collaborators.length > 3
-                            ? 3
-                            : story.collaborators.length,
-                        (index) => Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: CircleAvatar(
-                            radius: 12,
-                            backgroundImage: NetworkImage(
-                                story.collaborators[index].profileImage!),
-                          ),
-                        ),
-                      ),
-                      if (story.collaborators.length > 3)
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: AppColors.primary,
-                          child: Text(
-                            '+${story.collaborators.length - 3}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
                 ],
               ),
             ),

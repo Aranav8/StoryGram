@@ -25,7 +25,7 @@ class ProfileViewModel extends ChangeNotifier {
     await Future.delayed(const Duration(milliseconds: 500));
 
     _user = User(
-      id: '1',
+      id: 1,
       name: 'Aranav Kumar',
       bio: 'Passionate storyteller with a lot of fantasy.',
       profileImage: null,
@@ -40,60 +40,17 @@ class ProfileViewModel extends ChangeNotifier {
     _userStories = List.generate(
       4,
       (index) => Story(
-        id: 'story_$index',
+        id: index,
         title: 'The Chronicles of Mysteria: Part ${index + 1}',
         description:
             'An epic fantasy adventure in a world of magic and mystery.',
-        image: 'assets/images/example.png',
-        author: _user!.name,
         likes: 1200 + (index * 100),
         views: 2500 + (index * 200),
         publishedDate: DateTime.now().subtract(Duration(days: index * 5)),
-      ),
-    );
-
-    _collaborationStories = List.generate(
-      3,
-      (index) => Story(
-        id: 'collab_$index',
-        title: 'Cosmic Voyagers: The Lost Planet',
-        description: 'A sci-fi collaboration about space explorers.',
-        image: 'assets/images/example.png',
-        author: 'Multiple Authors',
-        likes: 850 + (index * 75),
-        views: 1900 + (index * 150),
-        publishedDate:
-            DateTime.now().subtract(Duration(days: 10 + (index * 8))),
-        collaborators: List.generate(
-          4,
-          (i) => User(
-            id: 'user_$i',
-            name: 'Collaborator $i',
-            bio: 'Writer',
-            profileImage:
-                'https://randomuser.me/api/portraits/men/${i + 10}.jpg',
-            location: 'Location',
-            website: 'website.com',
-            followers: 100,
-            following: 100,
-            stories: 5,
-          ),
-        ),
-      ),
-    );
-
-    _savedStories = List.generate(
-      6,
-      (index) => Story(
-        id: 'saved_$index',
-        title: 'Midnight Tales: The Haunting ${index + 1}',
-        description:
-            'A collection of horror stories that will keep you up at night.',
-        image: 'assets/images/example.png',
-        author: 'Various Authors',
-        likes: 600 + (index * 50),
-        views: 1500 + (index * 100),
-        publishedDate: DateTime.now().subtract(Duration(days: 3 + (index * 2))),
+        userId: 11,
+        lastEdited: DateTime.now(),
+        storyType: '',
+        status: '',
       ),
     );
 

@@ -1,16 +1,19 @@
+// views/library/library_screen.dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart'; // Import the share_plus package
 import 'package:collabwrite/core/constants/assets.dart';
 import 'package:collabwrite/core/constants/colors.dart';
 import 'package:collabwrite/viewmodel/library_viewmodel.dart';
 import 'package:collabwrite/views/home/home_screen.dart';
 import 'package:collabwrite/views/create/create_screen.dart';
 import 'package:collabwrite/views/profile/profile_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:collabwrite/data/models/story_model.dart';
+import 'package:collabwrite/views/widgets/custom_bottom_nav_bar.dart';
+import 'package:collabwrite/views/widgets/empty_state.dart';
 
-import '../../data/models/story_model.dart';
-import '../widgets/custom_bottom_nav_bar.dart';
-import '../widgets/empty_state.dart';
+import '../edit/edit_story_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -22,17 +25,16 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   final int _selectedNavIndex = 2;
   final TextEditingController _searchController = TextEditingController();
-
   late final LibraryViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-
-    _viewModel = LibraryViewModel();
+    // Access the globally provided ViewModel. listen:false is correct for initState.
+    _viewModel = Provider.of<LibraryViewModel>(context, listen: false);
+    _viewModel.loadStories(); // Load stories when the screen initializes
 
     _searchController.text = _viewModel.searchQuery;
-
     _searchController.addListener(() {
       _viewModel.updateSearchQuery(_searchController.text);
     });
@@ -41,7 +43,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _viewModel.dispose();
+    // _viewModel.dispose(); // Only dispose if created and owned solely by this widget
     super.dispose();
   }
 
@@ -71,14 +73,44 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _navigateToStoryDetail(Story story) {
-    print("Navigate to detail/edit for: ${story.title}");
-    _showSnackBar(
-        'Navigate to edit screen for "${story.title}" (Not Implemented)');
+    if ((story.storyType.toLowerCase() == 'chapter-based' ||
+            story.storyType.toLowerCase() == 'chapter_based') &&
+        story.chapters != null &&
+        story.chapters!.isNotEmpty) {
+      Chapter firstChapter = story.chapters!.first;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EditStoryScreen(
+            story: story,
+            chapter: firstChapter,
+          ),
+        ),
+      ).then((value) {
+        // `value` could be used to pass data back if EditStoryScreen returns something
+        print("Returned from EditStoryScreen, reloading stories in Library.");
+        _viewModel.loadStories();
+      });
+    } else {
+      print(
+          "Navigating to CreateScreen to edit story details for: ${story.title}");
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CreateScreen(draftStory: story),
+        ),
+      ).then((_) {
+        print(
+            "Returned from CreateScreen (edit mode), reloading stories in Library.");
+        _viewModel.loadStories();
+      });
+    }
   }
 
   AppBar _buildAppBar(BuildContext context) {
     final viewModel = context.watch<LibraryViewModel>();
     return AppBar(
+      // ... (AppBar code remains the same)
       backgroundColor: Colors.white,
       elevation: 1.0,
       shadowColor: Colors.grey[200],
@@ -118,6 +150,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildStoryItem(BuildContext context, Story story) {
+    // ... (Story item code remains the same)
     int totalChapters = story.chapters?.length ?? 0;
     int completedChapters =
         story.chapters?.where((c) => c.isComplete).length ?? 0;
@@ -154,7 +187,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         style: TextStyle(fontSize: 12, color: Colors.grey[600]))
                   ]),
                   const SizedBox(height: 8),
-                  if (story.storyType == 'Chapter-Based')
+                  if (story.storyType.toLowerCase() == 'chapter-based' ||
+                      story.storyType.toLowerCase() == 'chapter_based')
                     Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -193,6 +227,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildCoverImageThumbnail(String? coverImagePath) {
+    // ... (Cover image thumbnail code remains the same)
     return ClipRRect(
         borderRadius: BorderRadius.circular(8.0),
         child: Container(
@@ -200,17 +235,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
             height: 90,
             color: Colors.grey[200],
             child: coverImagePath != null && coverImagePath.isNotEmpty
-                ? Image.asset(coverImagePath,
+                // Attempt to load as asset, then fallback to file if it's a local path
+                ? Image.asset(
+                    coverImagePath, // Assuming it's an asset path like "assets/images/example.png"
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.image_not_supported,
-                        color: Colors.grey))
+                    errorBuilder: (context, error, stackTrace) {
+                      // If asset fails, it might be a file path (e.g., from image_picker)
+                      // This part is tricky if paths are mixed. For dummy data, it's usually assets.
+                      // For user-uploaded, it would be a file path.
+                      // For simplicity here, we assume asset or just an icon.
+                      print(
+                          "Error loading cover image asset: $coverImagePath, $error");
+                      return const Icon(Icons.image_not_supported,
+                          color: Colors.grey);
+                    },
+                  )
                 : const Center(
                     child:
                         Icon(Icons.menu_book, color: Colors.grey, size: 30))));
   }
 
   Widget _buildStatusChip(StoryStatus status) {
+    // ... (Status chip code remains the same)
     return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -226,6 +272,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showFilterBottomSheet(BuildContext context) {
+    // ... (Filter bottom sheet code remains the same)
     final viewModel = context.read<LibraryViewModel>();
     Set<StoryStatus> tempSelectedStatuses =
         Set.from(viewModel.selectedStatuses);
@@ -294,7 +341,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               Wrap(
                   spacing: 8,
                   runSpacing: 4,
-                  children: ['Single', 'Chapter-Based'].map((type) {
+                  // Ensure these types match your Story.storyType values
+                  children: ['Single Story', 'Chapter-based'].map((type) {
                     final bool isSelected = tempSelectedTypes.contains(type);
                     return FilterChip(
                         label: Text(type),
@@ -405,19 +453,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 Navigator.pop(sheetContext);
                 _navigateToStoryDetail(story);
               }),
-          ListTile(
-              leading: const Icon(Icons.copy_outlined),
-              title: const Text('Duplicate'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _showSnackBar('Duplicate action (Not Implemented)');
-              }),
+          // ListTile( // REMOVED Duplicate Feature
+          //     leading: const Icon(Icons.copy_outlined),
+          //     title: const Text('Duplicate'),
+          //     onTap: () {
+          //       Navigator.pop(sheetContext);
+          //       _showSnackBar('Duplicate action (Not Implemented)');
+          //     }),
           ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('Share'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _showSnackBar('Sharing options (Not Implemented)');
+                // Implement Share functionality
+                final String shareText =
+                    'Check out my story: "${story.title}" by ${story.authorName} on Creative Collab! ${story.description != null && story.description!.isNotEmpty ? "\n\n${story.description}" : ""}\n\n#CreativeCollab #Storytelling';
+                // In a real app, you might add a link to the story if it's hosted online
+                // e.g., shareText += "\nRead it here: https://mycreativecollab.com/story/${story.id}";
+                Share.share(shareText, subject: 'My Story: ${story.title}');
+                _showSnackBar('Sharing options opened for "${story.title}"');
               }),
           if (story.status == StoryStatus.draft)
             ListTile(
@@ -454,7 +508,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 onTap: () async {
                   Navigator.pop(sheetContext);
                   bool success = await viewModel.updateStoryStatus(
-                      story.id, StoryStatus.draft);
+                      story.id, StoryStatus.draft); // Unarchive to draft
                   _showSnackBar(success
                       ? 'Story unarchived'
                       : 'Failed to unarchive story');
@@ -473,6 +527,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showDeleteConfirmation(BuildContext context, Story story) {
+    // ... (Delete confirmation code remains the same)
     final viewModel = context.read<LibraryViewModel>();
     showDialog(
       context: context,
@@ -502,31 +557,36 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showSnackBar(String message) {
+    // ... (Snackbar code remains the same)
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(15),
-        backgroundColor: AppColors.secondary,
+        backgroundColor:
+            AppColors.secondary, // Or AppColors.primary for success
         duration: const Duration(seconds: 2)));
   }
 
   String _formatDateTimeRelative(DateTime dateTime) {
+    // ... (Date formatting code remains the same)
     final now = DateTime.now();
     final difference = now.difference(dateTime);
-    if (difference.inSeconds < 60)
+    if (difference.inSeconds < 60) {
       return 'Just now';
-    else if (difference.inMinutes < 60)
+    } else if (difference.inMinutes < 60) {
       return '${difference.inMinutes}m ago';
-    else if (difference.inHours < 24)
+    } else if (difference.inHours < 24) {
       return '${difference.inHours}h ago';
-    else if (difference.inDays < 7)
+    } else if (difference.inDays < 7) {
       return '${difference.inDays}d ago';
-    else
+    } else {
       return DateFormat('MMM d, yyyy').format(dateTime);
+    }
   }
 
   String _getStatusText(StoryStatus status) {
+    // ... (Get status text code remains the same)
     switch (status) {
       case StoryStatus.draft:
         return 'Draft';
@@ -538,6 +598,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Color _getStatusColor(StoryStatus status) {
+    // ... (Get status color code remains the same)
     switch (status) {
       case StoryStatus.draft:
         return Colors.orange[700]!;
@@ -550,53 +611,57 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _viewModel,
-      child: Builder(
-        builder: (context) {
-          final viewModel = context.watch<LibraryViewModel>();
+    // Wrap with ChangeNotifierProvider if LibraryViewModel is created here.
+    // If provided higher up, Builder is fine.
+    // For safety and if LibraryViewModel is specific to this screen's lifecycle,
+    // it's often better to create and provide it here, or ensure it's correctly managed.
+    // Assuming it's provided by a parent widget or you initialize it in initState.
 
-          return Scaffold(
-            backgroundColor: Colors.grey[50],
-            appBar: _buildAppBar(context),
-            body: SafeArea(
-              child: viewModel.isLoading
-                  ? const Center(
-                      child:
-                          CircularProgressIndicator(color: AppColors.primary))
-                  : viewModel.filteredStories.isNotEmpty
-                      ? ListView.builder(
-                          padding: const EdgeInsets.all(15),
-                          itemCount: viewModel.filteredStories.length,
-                          itemBuilder: (ctx, index) => _buildStoryItem(
-                              ctx, viewModel.filteredStories[index]),
-                        )
-                      : Center(
-                          child: Padding(
-                              padding: const EdgeInsets.all(20.0),
-                              child: EmptyState(
-                                icon: Icons.menu_book,
-                                title: viewModel.isSearchActive ||
-                                        viewModel.selectedStatuses.isNotEmpty ||
-                                        viewModel.selectedTypes.isNotEmpty
-                                    ? 'No Matching Stories'
-                                    : 'Your Library is Empty',
-                                message: viewModel.isSearchActive ||
-                                        viewModel.selectedStatuses.isNotEmpty ||
-                                        viewModel.selectedTypes.isNotEmpty
-                                    ? 'Try adjusting your search or filters.'
-                                    : 'Start creating your first story!',
-                                actionLabel: 'Create New Story',
-                                onAction: _navigateToCreateScreen,
-                              ))),
-            ),
-            bottomNavigationBar: CustomBottomNavBar(
-              selectedIndex: _selectedNavIndex,
-              onItemTapped: _onNavItemTapped,
-            ),
-          );
-        },
-      ),
+    return Builder(
+      // Using Builder to get context that can access the Provider if needed
+      builder: (context) {
+        final viewModel = context.watch<
+            LibraryViewModel>(); // Now this will work if Provider is above
+
+        return Scaffold(
+          backgroundColor: Colors.grey[50],
+          appBar: _buildAppBar(context),
+          body: SafeArea(
+            child: viewModel.isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary))
+                : viewModel.filteredStories.isNotEmpty
+                    ? ListView.builder(
+                        padding: const EdgeInsets.all(15),
+                        itemCount: viewModel.filteredStories.length,
+                        itemBuilder: (ctx, index) => _buildStoryItem(
+                            ctx, viewModel.filteredStories[index]),
+                      )
+                    : Center(
+                        child: Padding(
+                            padding: const EdgeInsets.all(20.0),
+                            child: EmptyState(
+                              icon: Icons.menu_book,
+                              title: viewModel.isSearchActive ||
+                                      viewModel.selectedStatuses.isNotEmpty ||
+                                      viewModel.selectedTypes.isNotEmpty
+                                  ? 'No Matching Stories'
+                                  : 'Your Library is Empty',
+                              message: viewModel.isSearchActive ||
+                                      viewModel.selectedStatuses.isNotEmpty ||
+                                      viewModel.selectedTypes.isNotEmpty
+                                  ? 'Try adjusting your search or filters.'
+                                  : 'Start creating your first story!',
+                              actionLabel: 'Create New Story',
+                              onAction: _navigateToCreateScreen,
+                            ))),
+          ),
+          bottomNavigationBar: CustomBottomNavBar(
+            selectedIndex: _selectedNavIndex,
+            onItemTapped: _onNavItemTapped,
+          ),
+        );
+      },
     );
   }
 }

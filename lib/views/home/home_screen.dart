@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontWeight: FontWeight.w500),
                             ),
                             SizedBox(
-                              height: 300,
+                              height: 320,
                               child: ListView.builder(
                                 scrollDirection: Axis.horizontal,
                                 itemCount: viewModel.stories.length,
