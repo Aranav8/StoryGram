@@ -2,9 +2,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:collabwrite/data/models/story_model.dart'; // Adjust path if necessary
-import 'package:collabwrite/services/auth_service.dart';   // Adjust path if necessary
-import 'dart:math'; // For max()
+import 'package:collabwrite/data/models/story_model.dart';
+import 'package:collabwrite/services/auth_service.dart';
+import 'dart:math';
 
 class StoryService {
   static const String _baseUrl = 'http://18.232.150.66:8080';
@@ -22,103 +22,305 @@ class StoryService {
         headers['Authorization'] = 'Bearer $token';
       } else {
         if (kDebugMode) {
-          print('StoryService Warning: Auth token not found for a route that requires it.');
+          print(
+              'StoryService Warning: Auth token not found for a route that requires it.');
         }
       }
     }
     return headers;
   }
 
-  // Helper to build request body for story updates/creations
-  Map<String, dynamic> _buildStoryRequestBody(Story story, {bool isCreate = false}) {
-    Map<String, dynamic> body = story.toJson(); // Get the full JSON from the model
+  Map<String, dynamic> _buildStoryRequestBody(Story story,
+      {bool isCreate = false}) {
+    Map<String, dynamic> body = story.toJson();
 
-    // --- Ensure User ID key matches backend expectation for POST/PATCH/PUT ---
-    // Your backend GET response uses "UserID" (int) for the author.
-    // Your failed PATCH log showed client sending "user_id" (int).
-    // We need to be consistent. Story.toJson() now produces "UserID".
-    // If your PATCH/POST endpoint *strictly* requires "user_id" (lowercase):
-    if (body.containsKey('UserID') && body['UserID'] != null) { // Check if UserID is present and not null
+    // Remove 'Chapters' from the main story create/update payload
+    // if chapters are handled by separate endpoints.
+    body.remove('Chapters');
+    body.remove('chapters');
+
+    if (body.containsKey('UserID') && body['UserID'] != null) {
       body['user_id'] = body.remove('UserID');
-    } else if (!body.containsKey('user_id') && body['UserID'] == null) { // If UserID was null, ensure user_id is also null or absent
-      body.remove('UserID'); // Remove UserID if it was null
-      body['user_id'] = null; // Explicitly set user_id to null or let it be absent
-    }
-    // If UserID was not in body.toJson() output and story.authorId is valid, try to add it.
-    else if (!body.containsKey('UserID') && !body.containsKey('user_id')) {
+    } else if (!body.containsKey('user_id') && body['UserID'] == null) {
+      body.remove('UserID');
+      body['user_id'] = null;
+    } else if (!body.containsKey('UserID') && !body.containsKey('user_id')) {
       int? authorIdAsInt = int.tryParse(story.authorId);
-      if (authorIdAsInt != null) {
-        body['user_id'] = authorIdAsInt; // Add as 'user_id' if backend expects this
-      } else {
-        if (kDebugMode) print("Warning: Could not parse story.authorId ('${story.authorId}') to int for user_id in request body.");
-        body['user_id'] = null; // Or handle error
-      }
+      body['user_id'] = authorIdAsInt;
     }
 
-
-    // --- Handle Story ID (primary key of the story itself) ---
-    // Backend GET response uses "ID" (int) for the story's own ID.
-    // Story.toJson() produces "ID".
-    // For create, if ID is a placeholder (e.g., 0), it might need to be removed or null.
-    if (isCreate) {
-      if (body['ID'] == 0) { // Assuming 0 is a client-side placeholder for a new story
-        body.remove('ID'); // Let backend auto-generate ID
-      }
-    } else {
-      // For updates, ensure 'last_edited' (or 'LastEdited') is current.
-      // Story.toJson() already includes LastEdited.
+    if (!isCreate) {
       body['LastEdited'] = DateTime.now().toUtc().toIso8601String();
-
-      // If PATCH/PUT body expects 'id' (lowercase) instead of 'ID' for the story's PK:
-      // if (body.containsKey('ID')) {
-      //   body['id'] = body.remove('ID');
-      // }
     }
-    if (kDebugMode) print("Prepared Request Body: ${jsonEncode(body)}");
+    if (kDebugMode)
+      print(
+          "Prepared Story Request Body for ${isCreate ? 'CREATE' : 'UPDATE'}: ${jsonEncode(body)}");
     return body;
   }
 
-
-  // --- Create Story ---
-  Future<bool> createStory(Story story) async {
+  Future<Story?> createStory(Story storyMetadata) async {
+    // Now expects mainly metadata
     const String url = '$_baseUrl/createstories';
-    final Map<String, dynamic> requestBody = _buildStoryRequestBody(story, isCreate: true);
+    // _buildStoryRequestBody will now pass the client-generated ID for new stories.
+    // It will NOT include chapters if removed in _buildStoryRequestBody.
+    final Map<String, dynamic> requestBody =
+        _buildStoryRequestBody(storyMetadata, isCreate: true);
 
-    // Critical check for user_id (owner of the story)
-    if (requestBody['user_id'] == null && requestBody['UserID'] == null) { // Check both possible keys
-      if (kDebugMode) print('StoryService Error: Valid user_id/UserID is required for createStory. authorId from model: ${story.authorId}');
-      return false;
+    if (requestBody['user_id'] == null) {
+      if (kDebugMode)
+        print(
+            'StoryService Error: Valid user_id is required for createStory. authorId from model: ${storyMetadata.authorId}');
+      return null;
+    }
+    if (!requestBody.containsKey('ID') ||
+        requestBody['ID'] == null ||
+        (requestBody['ID'] is int && requestBody['ID'] == 0)) {
+      if (kDebugMode)
+        print(
+            'StoryService Error: Valid Story ID is required in the payload for createStory. Current ID in payload: ${requestBody['ID']}');
+      return null;
     }
 
-    if (kDebugMode) print("StoryService: POST $url, Payload: ${jsonEncode(requestBody)}");
+    if (kDebugMode)
+      print(
+          "StoryService: POST $url (Story Metadata), Payload: ${jsonEncode(requestBody)}");
     try {
-      final response = await http.post(Uri.parse(url), headers: await _getHeaders(), body: jsonEncode(requestBody));
-      if (kDebugMode) print("StoryService: createStory response ${response.statusCode}, Body: ${response.body}");
-      return response.statusCode == 201 || response.statusCode == 200;
+      final response = await http.post(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(requestBody));
+      if (kDebugMode)
+        print(
+            "StoryService: createStory (Metadata) response ${response.statusCode}, Body: ${response.body}");
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        // The response here might NOT have chapters.
+        return Story.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+      }
+      return null;
     } catch (e) {
-      if (kDebugMode) print('Error creating story: $e');
+      if (kDebugMode) print('Error creating story metadata: $e');
+      return null;
+    }
+  }
+
+  // --- Chapter Specific Methods ---
+
+  Future<Chapter?> createChapter(
+      {required int storyId,
+      required String title,
+      required String content,
+      int chapterNumber = 1, // Default or determine dynamically
+      bool isComplete = false}) async {
+    const String url = '$_baseUrl/createchapter';
+    final Map<String, dynamic> requestBody = {
+      "story_id": storyId,
+      "title": title,
+      "content": content,
+      "chapter_number": chapterNumber,
+      "is_complete": isComplete,
+      // "created_at" and "updated_at" are usually set by the backend
+    };
+    if (kDebugMode)
+      print(
+          "StoryService: POST $url (Create Chapter), Payload: ${jsonEncode(requestBody)}");
+    try {
+      final response = await http.post(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(requestBody));
+      if (kDebugMode)
+        print(
+            "StoryService: createChapter response ${response.statusCode}, Body: ${response.body}");
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        // 201 Created is typical
+        return Chapter.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) print('Error creating chapter for story $storyId: $e');
+      return null;
+    }
+  }
+
+  Future<Chapter?> getChapterById(String chapterId) async {
+    // Assuming chapter ID can be string or int based on your model
+    final String url = '$_baseUrl/getchapterbyid/$chapterId';
+    if (kDebugMode) print("StoryService: GET $url");
+    try {
+      final response =
+          await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (kDebugMode)
+        print(
+            "StoryService: getChapterById response ${response.statusCode}, Body: ${response.body}");
+      if (response.statusCode == 200) {
+        return Chapter.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) print('Error fetching chapter $chapterId: $e');
+      return null;
+    }
+  }
+
+  // getChaptersByStory was already defined, ensure it's correct
+  Future<List<Chapter>> getChaptersByStory(int storyId) async {
+    final String url = '$_baseUrl/getchapterbystory/$storyId';
+    if (kDebugMode)
+      print("StoryService: GET $url (Chapters for story $storyId)");
+    try {
+      final response =
+          await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (kDebugMode)
+        print(
+            "StoryService: getChaptersByStory response ${response.statusCode}, Body: ${response.body.length > 100 ? response.body.substring(0, 100) : response.body}");
+      if (response.statusCode == 200) {
+        final List<dynamic> responseData = jsonDecode(response.body);
+        if (responseData.isEmpty) {
+          if (kDebugMode)
+            print(
+                "StoryService: No chapters found for story $storyId from backend.");
+          return [];
+        }
+        return responseData
+            .map((data) => Chapter.fromJson(data as Map<String, dynamic>))
+            .toList();
+      } else {
+        if (kDebugMode)
+          print(
+              'Failed to load chapters for story $storyId. Status: ${response.statusCode}');
+        return []; // Return empty list on failure rather than throwing, or handle error upstream
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error fetching chapters for story $storyId: $e');
+      return []; // Return empty list on exception
+    }
+  }
+
+  Future<Chapter?> updateChapter(
+      {required String
+          chapterId, // Assuming chapter ID from your model (string or int)
+      required int storyId,
+      required String title,
+      required String content,
+      required int chapterNumber,
+      required bool isComplete}) async {
+    final String url = '$_baseUrl/updatechapter/$chapterId';
+    final Map<String, dynamic> requestBody = {
+      "story_id": storyId, // Backend might use this for validation or linking
+      "title": title,
+      "content": content,
+      "chapter_number": chapterNumber,
+      "is_complete": isComplete,
+    };
+    if (kDebugMode)
+      print(
+          "StoryService: PUT $url (Update Chapter), Payload: ${jsonEncode(requestBody)}");
+    try {
+      final response = await http.put(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(requestBody));
+      if (kDebugMode)
+        print(
+            "StoryService: updateChapter response ${response.statusCode}, Body: ${response.body}");
+      if (response.statusCode == 200) {
+        return Chapter.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) print('Error updating chapter $chapterId: $e');
+      return null;
+    }
+  }
+
+  Future<bool> deleteChapter(String chapterId) async {
+    final String url = '$_baseUrl/deletechapter/$chapterId';
+    if (kDebugMode) print("StoryService: DELETE $url (Delete Chapter)");
+    try {
+      final response = await http.delete(Uri.parse(url),
+          headers: await _getHeaders(isDeleteOrPostNoBody: true));
+      if (kDebugMode)
+        print(
+            "StoryService: deleteChapter response ${response.statusCode}, Body: ${response.body}");
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      if (kDebugMode) print('Error deleting chapter $chapterId: $e');
       return false;
     }
   }
 
+  // ... Other StoryService methods (getStoriesByAuthor, getStoryById, updateStory etc.)
+  // updateStory should primarily update story metadata.
+  Future<Story?> updateStory(Story storyMetadata) async {
+    final String url = '$_baseUrl/updateStory/${storyMetadata.id}';
+    final Map<String, dynamic> requestBody =
+        _buildStoryRequestBody(storyMetadata, isCreate: false);
+
+    if (requestBody['user_id'] == null) {
+      if (kDebugMode)
+        print(
+            'StoryService Error: Valid user_id is required for updateStory. authorId from model: ${storyMetadata.authorId}');
+      return null;
+    }
+    if (!requestBody.containsKey('ID') ||
+        requestBody['ID'] == null ||
+        (requestBody['ID'] is int && requestBody['ID'] == 0)) {
+      if (kDebugMode)
+        print(
+            'StoryService Error: Story ID is missing or invalid in the request body for updateStory. Original story ID: ${storyMetadata.id}. Current ID in payload: ${requestBody['ID']}');
+      return null;
+    }
+
+    if (kDebugMode)
+      print(
+          "StoryService: PUT $url (Update Story Metadata), Payload: ${jsonEncode(requestBody)}");
+    try {
+      final response = await http.put(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(requestBody));
+      if (kDebugMode)
+        print(
+            "StoryService: updateStory (Metadata) response ${response.statusCode}, Body: ${response.body}");
+      if (response.statusCode == 200) {
+        return Story.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+      } else {
+        if (kDebugMode)
+          print(
+              "Failed to update story metadata. Status: ${response.statusCode}, Body: ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error updating story metadata: $e');
+      return null;
+    }
+  }
+
+  // ... (getStoriesByAuthor, getAllStories, getStoryById, updateStory, deleteStory, etc., remain the same as the previous good version)
   Future<List<Story>> getStoriesByAuthor(String authorIdString) async {
     int? numericAuthorId = int.tryParse(authorIdString);
     if (numericAuthorId == null) {
-      if (kDebugMode) print('StoryService Error: Non-numeric authorId for getStoriesByAuthor: $authorIdString');
+      if (kDebugMode)
+        print(
+            'StoryService Error: Non-numeric authorId for getStoriesByAuthor: $authorIdString');
       return [];
     }
     final String url = '$_baseUrl/GetStoriesByUser/$numericAuthorId';
     if (kDebugMode) print("StoryService: GET $url");
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
-      if (kDebugMode) print("StoryService: getStoriesByAuthor response ${response.statusCode}, Body: ${response.body}");
+      final response =
+          await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (kDebugMode)
+        print(
+            "StoryService: getStoriesByAuthor response ${response.statusCode}, Body: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}");
       if (response.statusCode == 200) {
         final List<dynamic> responseData = jsonDecode(response.body);
-        return responseData.map((data) => Story.fromJson(data as Map<String, dynamic>)).toList();
+        return responseData
+            .map((data) => Story.fromJson(data as Map<String, dynamic>))
+            .toList();
       } else {
-        throw Exception('Failed to load stories for user. Status: ${response.statusCode}, Body: ${response.body}');
+        throw Exception(
+            'Failed to load stories for user. Status: ${response.statusCode}, Body: ${response.body}');
       }
     } catch (e) {
+      if (kDebugMode) print('Error fetching stories for user: $e');
       throw Exception('Error fetching stories for user: $e');
     }
   }
@@ -127,13 +329,19 @@ class StoryService {
     final String url = '$_baseUrl/GetAllStories';
     if (kDebugMode) print("StoryService: GET $url");
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders(requireAuth: false));
-      if (kDebugMode) print("StoryService: getAllStories response ${response.statusCode}, Body: ${response.body}");
+      final response = await http.get(Uri.parse(url),
+          headers: await _getHeaders(requireAuth: false));
+      if (kDebugMode)
+        print(
+            "StoryService: getAllStories response ${response.statusCode}, Body: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}");
       if (response.statusCode == 200) {
         final List<dynamic> responseData = jsonDecode(response.body);
-        return responseData.map((data) => Story.fromJson(data as Map<String, dynamic>)).toList();
+        return responseData
+            .map((data) => Story.fromJson(data as Map<String, dynamic>))
+            .toList();
       } else {
-        throw Exception('Failed to load all stories. Status: ${response.statusCode}, Body: ${response.body}');
+        throw Exception(
+            'Failed to load all stories. Status: ${response.statusCode}, Body: ${response.body}');
       }
     } catch (e) {
       if (kDebugMode) print("StoryService: Exception in getAllStories: $e");
@@ -145,12 +353,18 @@ class StoryService {
     final String url = '$_baseUrl/GetStories/$storyId';
     if (kDebugMode) print("StoryService: GET $url (for single story details)");
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
-      if (kDebugMode) print("StoryService: getStoryById response ${response.statusCode}, Body: ${response.body}");
+      final response =
+          await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (kDebugMode)
+        print(
+            "StoryService: getStoryById response ${response.statusCode}, Body: ${response.body}");
       if (response.statusCode == 200) {
-        return Story.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+        return Story.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
       } else {
-        if (kDebugMode) print('Failed to load story $storyId. Status: ${response.statusCode}, Body: ${response.body}');
+        if (kDebugMode)
+          print(
+              'Failed to load story $storyId. Status: ${response.statusCode}, Body: ${response.body}');
         return null;
       }
     } catch (e) {
@@ -159,37 +373,15 @@ class StoryService {
     }
   }
 
-  Future<Story?> updateStory(Story storyToUpdate) async {
-    final String url = '$_baseUrl/updateStory/${storyToUpdate.id}';
-    final Map<String, dynamic> requestBody = _buildStoryRequestBody(storyToUpdate);
-
-    if (requestBody['user_id'] == null && requestBody['UserID'] == null) {
-      if (kDebugMode) print('StoryService Error: Valid user_id/UserID is required for updateStory. authorId from model: ${storyToUpdate.authorId}');
-      return null;
-    }
-
-    if (kDebugMode) print("StoryService: PUT $url, Payload: ${jsonEncode(requestBody)}");
-    try {
-      final response = await http.put(Uri.parse(url), headers: await _getHeaders(), body: jsonEncode(requestBody));
-      if (kDebugMode) print("StoryService: updateStory response ${response.statusCode}, Body: ${response.body}");
-      if (response.statusCode == 200) {
-        return Story.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-      } else {
-        if (kDebugMode) print("Failed to update story. Status: ${response.statusCode}, Body: ${response.body}");
-        return null;
-      }
-    } catch (e) {
-      if (kDebugMode) print('Error updating story: $e');
-      return null;
-    }
-  }
-
   Future<bool> deleteStory(int storyId) async {
     final String url = '$_baseUrl/deleteStory/$storyId';
     if (kDebugMode) print("StoryService: DELETE $url");
     try {
-      final response = await http.delete(Uri.parse(url), headers: await _getHeaders(isDeleteOrPostNoBody: true));
-      if (kDebugMode) print("StoryService: deleteStory response ${response.statusCode}, Body: ${response.body}");
+      final response = await http.delete(Uri.parse(url),
+          headers: await _getHeaders(isDeleteOrPostNoBody: true));
+      if (kDebugMode)
+        print(
+            "StoryService: deleteStory response ${response.statusCode}, Body: ${response.body}");
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
       if (kDebugMode) print('Error deleting story: $e');
@@ -197,45 +389,30 @@ class StoryService {
     }
   }
 
-  Future<List<Chapter>> getChaptersByStory(int storyId) async {
-    final String url = '$_baseUrl/getchapterbystory/$storyId';
-    if (kDebugMode) print("StoryService: GET $url");
-    try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
-      if (kDebugMode) print("StoryService: getChaptersByStory response ${response.statusCode}");
-      if (response.statusCode == 200) {
-        final List<dynamic> responseData = jsonDecode(response.body);
-        return responseData.map((data) => Chapter.fromJson(data as Map<String, dynamic>)).toList();
-      } else {
-        throw Exception('Failed to load chapters. Status: ${response.statusCode}, Body: ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Error fetching chapters: $e');
-    }
-  }
-
   Future<bool> incrementViewCount(int storyId) async {
     final Story? currentStory = await getStoryById(storyId);
     if (currentStory == null) {
-      if (kDebugMode) print("StoryService Error: Could not fetch story $storyId to increment view count.");
+      if (kDebugMode)
+        print(
+            "StoryService Error: Could not fetch story $storyId to increment view count.");
       return false;
     }
-    final Story storyWithIncrementedView = currentStory.copyWith(views: currentStory.views + 1);
-    final Map<String, dynamic> requestBody = _buildStoryRequestBody(storyWithIncrementedView);
-
-    if (requestBody['user_id'] == null && requestBody['UserID'] == null) {
-      if (kDebugMode) print('StoryService Error: Valid user_id/UserID is required for incrementViewCount. authorId from model: ${currentStory.authorId}');
-      return false;
-    }
-
+    final Map<String, dynamic> patchData = {'Views': currentStory.views + 1};
     final String url = '$_baseUrl/updateStory/$storyId';
-    if (kDebugMode) print("StoryService: PATCH $url (increment view), Payload: ${jsonEncode(requestBody)}");
+
+    if (kDebugMode)
+      print(
+          "StoryService: PATCH $url (increment view), Payload: ${jsonEncode(patchData)}");
     try {
-      final response = await http.patch(Uri.parse(url), headers: await _getHeaders(), body: jsonEncode(requestBody));
-      if (kDebugMode) print("StoryService: incrementViewCount response ${response.statusCode}, Body: ${response.body}");
+      final response = await http.patch(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(patchData));
+      if (kDebugMode)
+        print(
+            "StoryService: incrementViewCount response ${response.statusCode}, Body: ${response.body}");
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
-      if (kDebugMode) print('Error incrementing view count for story $storyId: $e');
+      if (kDebugMode)
+        print('Error incrementing view count for story $storyId: $e');
       return false;
     }
   }
@@ -243,22 +420,22 @@ class StoryService {
   Future<bool> likeStory(int storyId) async {
     final Story? currentStory = await getStoryById(storyId);
     if (currentStory == null) {
-      if (kDebugMode) print("StoryService Error: Could not fetch story $storyId to like.");
+      if (kDebugMode)
+        print("StoryService Error: Could not fetch story $storyId to like.");
       return false;
     }
-    final Story storyWithIncrementedLikes = currentStory.copyWith(likes: currentStory.likes + 1);
-    final Map<String, dynamic> requestBody = _buildStoryRequestBody(storyWithIncrementedLikes);
-
-    if (requestBody['user_id'] == null && requestBody['UserID'] == null) {
-      if (kDebugMode) print('StoryService Error: Valid user_id/UserID is required for likeStory. authorId from model: ${currentStory.authorId}');
-      return false;
-    }
-
+    final Map<String, dynamic> patchData = {'Likes': currentStory.likes + 1};
     final String url = '$_baseUrl/updateStory/$storyId';
-    if (kDebugMode) print("StoryService: PATCH $url (like story), Payload: ${jsonEncode(requestBody)}");
+
+    if (kDebugMode)
+      print(
+          "StoryService: PATCH $url (like story), Payload: ${jsonEncode(patchData)}");
     try {
-      final response = await http.patch(Uri.parse(url), headers: await _getHeaders(), body: jsonEncode(requestBody));
-      if (kDebugMode) print("StoryService: likeStory response ${response.statusCode}, Body: ${response.body}");
+      final response = await http.patch(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(patchData));
+      if (kDebugMode)
+        print(
+            "StoryService: likeStory response ${response.statusCode}, Body: ${response.body}");
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       if (kDebugMode) print('Error liking story $storyId: $e');
@@ -269,26 +446,30 @@ class StoryService {
   Future<bool> unlikeStory(int storyId) async {
     final Story? currentStory = await getStoryById(storyId);
     if (currentStory == null) {
-      if (kDebugMode) print("StoryService Error: Could not fetch story $storyId to unlike.");
+      if (kDebugMode)
+        print("StoryService Error: Could not fetch story $storyId to unlike.");
       return false;
     }
     if (currentStory.likes <= 0) {
-      if (kDebugMode) print("StoryService Info: Story $storyId already has 0 likes. Cannot unlike further.");
+      if (kDebugMode)
+        print(
+            "StoryService Info: Story $storyId already has 0 likes. Cannot unlike further.");
       return true;
     }
-    final Story storyWithDecrementedLikes = currentStory.copyWith(likes: max(0, currentStory.likes - 1));
-    final Map<String, dynamic> requestBody = _buildStoryRequestBody(storyWithDecrementedLikes);
-
-    if (requestBody['user_id'] == null && requestBody['UserID'] == null) {
-      if (kDebugMode) print('StoryService Error: Valid user_id/UserID is required for unlikeStory. authorId from model: ${currentStory.authorId}');
-      return false;
-    }
-
+    final Map<String, dynamic> patchData = {
+      'Likes': max(0, currentStory.likes - 1)
+    };
     final String url = '$_baseUrl/updateStory/$storyId';
-    if (kDebugMode) print("StoryService: PATCH $url (unlike story), Payload: ${jsonEncode(requestBody)}");
+
+    if (kDebugMode)
+      print(
+          "StoryService: PATCH $url (unlike story), Payload: ${jsonEncode(patchData)}");
     try {
-      final response = await http.patch(Uri.parse(url), headers: await _getHeaders(), body: jsonEncode(requestBody));
-      if (kDebugMode) print("StoryService: unlikeStory response ${response.statusCode}, Body: ${response.body}");
+      final response = await http.patch(Uri.parse(url),
+          headers: await _getHeaders(), body: jsonEncode(patchData));
+      if (kDebugMode)
+        print(
+            "StoryService: unlikeStory response ${response.statusCode}, Body: ${response.body}");
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
       if (kDebugMode) print('Error unliking story $storyId: $e');
@@ -298,27 +479,28 @@ class StoryService {
 
   Future<bool> getLikeStatus(int storyId) async {
     final String url = '$_baseUrl/GetStories/$storyId';
-    if (kDebugMode) print("StoryService: GET $url (for like status for story $storyId)");
+    if (kDebugMode)
+      print("StoryService: GET $url (for like status for story $storyId)");
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
-      if (kDebugMode) print("StoryService: getLikeStatus response ${response.statusCode}, Body (story $storyId): ${response.body}");
+      final response =
+          await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (kDebugMode)
+        print(
+            "StoryService: getLikeStatus response ${response.statusCode}, Body (story $storyId): ${response.body}");
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        // >>> IMPORTANT: VERIFY THIS FIELD NAME FROM YOUR BACKEND <<<
-        // This field must be a boolean in the story's JSON indicating if the *current authenticated user* has liked it.
-        if (data.containsKey('currentUserHasLiked')) { // Example field name
-          return data['currentUserHasLiked'] as bool? ?? false;
-        } else if (data.containsKey('user_has_liked')) { // Another common example
-          return data['user_has_liked'] as bool? ?? false;
-        } else if (data.containsKey('isLikedByCurrentUser')) { // Yet another example
-          return data['isLikedByCurrentUser'] as bool? ?? false;
-        }
-        else {
-          if (kDebugMode) print("StoryService Warning: 'currentUserHasLiked' (or similar) field not found in story response for getLikeStatus. Defaulting to false. Story ID: $storyId");
+        if (data.containsKey('CurrentUserHasLiked')) {
+          return data['CurrentUserHasLiked'] as bool? ?? false;
+        } else {
+          if (kDebugMode)
+            print(
+                "StoryService Warning: 'CurrentUserHasLiked' field not found in story response for getLikeStatus. Defaulting to false. Story ID: $storyId. Response keys: ${data.keys.toList()}");
           return false;
         }
       }
-      if (kDebugMode) print("StoryService: Failed to get like status for story $storyId (Status: ${response.statusCode}), defaulting to false.");
+      if (kDebugMode)
+        print(
+            "StoryService: Failed to get like status for story $storyId (Status: ${response.statusCode}), defaulting to false.");
       return false;
     } catch (e) {
       if (kDebugMode) print('Error getting like status for story $storyId: $e');

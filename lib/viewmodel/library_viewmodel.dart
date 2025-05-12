@@ -1,4 +1,3 @@
-// viewmodel/library_viewmodel.dart
 import 'package:flutter/material.dart';
 import 'package:collabwrite/data/models/story_model.dart';
 import 'package:collabwrite/services/story_service.dart';
@@ -165,8 +164,6 @@ class LibraryViewModel extends ChangeNotifier {
       print("LibraryViewModel: Attempting to delete story: $storyId");
     bool success = false;
     _errorMessage = null; // Clear previous errors
-    // You might want a specific loading state for this item
-    // _isLoading = true; notifyListeners(); // Or a more granular loading state
 
     try {
       success = await _storyService.deleteStory(storyId);
@@ -187,8 +184,7 @@ class LibraryViewModel extends ChangeNotifier {
         print("LibraryViewModel: Exception deleting story $storyId: $e");
       success = false;
     } finally {
-      // _isLoading = false; notifyListeners(); // If using global isLoading
-      notifyListeners(); // Always notify to update UI based on success/failure and error message
+      notifyListeners();
     }
     return success;
   }
@@ -198,36 +194,29 @@ class LibraryViewModel extends ChangeNotifier {
       print(
           "LibraryViewModel: Attempting to update status for story $storyId to $newStatus");
     _errorMessage = null;
-    // _isLoading = true; notifyListeners(); // Or granular loading
 
     Story? storyToUpdate = _allStories.firstWhere((s) => s.id == storyId,
         orElse: () => throw Exception("Story not found locally"));
 
-    // Create a copy with the new status and updated lastEdited time for the API call
     Story storyWithNewStatus = storyToUpdate.copyWith(
       status: newStatus,
-      lastEdited: DateTime
-          .now(), // API will use its own lastEdited, but good to have it here
+      lastEdited: DateTime.now(),
     );
 
     try {
-      // The API for updateStory expects the full story object.
-      // We're updating its status and lastEdited time.
       Story? updatedStoryFromApi =
           await _storyService.updateStory(storyWithNewStatus);
 
       if (updatedStoryFromApi != null) {
         final index = _allStories.indexWhere((s) => s.id == storyId);
         if (index != -1) {
-          _allStories[index] =
-              updatedStoryFromApi; // Replace with story returned by API
+          _allStories[index] = updatedStoryFromApi;
           _applyFiltersAndSort();
           if (kDebugMode)
             print(
                 "LibraryViewModel: Story $storyId status updated to $newStatus (API & local).");
           return true;
         } else {
-          // Should not happen if storyToUpdate was found
           _errorMessage =
               "Error: Story $storyId found locally but not after API update.";
           return false;
@@ -245,7 +234,6 @@ class LibraryViewModel extends ChangeNotifier {
         print("LibraryViewModel: Exception updating story $storyId status: $e");
       return false;
     } finally {
-      // _isLoading = false; notifyListeners(); // If using global isLoading
       notifyListeners();
     }
   }

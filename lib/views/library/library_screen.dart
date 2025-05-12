@@ -1,8 +1,8 @@
-// views/library/library_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart'; // Import the share_plus package
+import 'package:share_plus/share_plus.dart';
 import 'package:collabwrite/core/constants/assets.dart';
 import 'package:collabwrite/core/constants/colors.dart';
 import 'package:collabwrite/viewmodel/library_viewmodel.dart';
@@ -12,6 +12,8 @@ import 'package:collabwrite/views/profile/profile_screen.dart';
 import 'package:collabwrite/data/models/story_model.dart';
 import 'package:collabwrite/views/widgets/custom_bottom_nav_bar.dart';
 import 'package:collabwrite/views/widgets/empty_state.dart';
+import 'package:collabwrite/services/story_service.dart';
+import 'package:collabwrite/viewmodel/profile_viewmodel.dart'; // Import ProfileViewModel
 
 import '../edit/edit_story_screen.dart';
 
@@ -26,18 +28,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
   final int _selectedNavIndex = 2;
   final TextEditingController _searchController = TextEditingController();
   late final LibraryViewModel _viewModel;
+  final StoryService _storyService = StoryService();
 
   @override
   void initState() {
     super.initState();
     _viewModel = Provider.of<LibraryViewModel>(context, listen: false);
-    // Correctly call loadStories AFTER the first frame if it causes notifyListeners immediately.
-    // However, if loadStories sets _isLoading = true and notifies, then fetches,
-    // it might be okay directly if the first notifyListeners is for the loading state.
-    // For safety with `addPostFrameCallback`:
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        // Check if the widget is still in the tree
         _viewModel.loadStories();
       }
     });
@@ -51,7 +49,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    // _viewModel.dispose(); // Only dispose if created and owned solely by this widget
     super.dispose();
   }
 
@@ -77,48 +74,124 @@ class _LibraryScreenState extends State<LibraryScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const CreateScreen()),
-    ).then((_) => _viewModel.loadStories());
+    ).then((_) {
+      print(
+          "Returned from CreateScreen (new story), reloading stories in Library.");
+      _viewModel.loadStories(forceRefresh: true);
+    });
   }
 
-  void _navigateToStoryDetail(Story story) {
-    if ((story.storyType.toLowerCase() == 'chapter-based' ||
-            story.storyType.toLowerCase() == 'chapter_based') &&
-        story.chapters != null &&
-        story.chapters!.isNotEmpty) {
-      Chapter firstChapter = story.chapters!.first;
+  Future<void> _navigateToStoryDetail(Story storyFromList) async {
+    _showLoadingDialog();
+
+    Story? storyMetadata = await _storyService.getStoryById(storyFromList.id);
+    if (!mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      return;
+    }
+
+    if (storyMetadata == null) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSnackBar(
+          'Could not load story details for "${storyFromList.title}".',
+          isError: true);
+      return;
+    }
+
+    List<Chapter> chapters =
+        await _storyService.getChaptersByStory(storyMetadata.id);
+    if (!mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      return;
+    }
+
+    Navigator.of(context, rootNavigator: true).pop();
+
+    storyMetadata = storyMetadata.copyWith(chapters: chapters);
+
+    if (storyMetadata.chapters.isNotEmpty) {
+      Chapter chapterToEdit = storyMetadata.chapters.first;
+
+      print(
+          "Navigating to EditStoryScreen with story: ${storyMetadata.title}, Chapter to edit: ${chapterToEdit.title}");
+      print(
+          "Chapter content being passed: '${chapterToEdit.content}' (empty: ${chapterToEdit.content.isEmpty})");
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => EditStoryScreen(
-            story: story,
-            chapter: firstChapter,
+            story: storyMetadata!,
+            chapter: chapterToEdit,
           ),
         ),
-      ).then((value) {
-        // `value` could be used to pass data back if EditStoryScreen returns something
-        print("Returned from EditStoryScreen, reloading stories in Library.");
-        _viewModel.loadStories();
+      ).then((returnedValue) {
+        if (returnedValue != null) {
+          print("Returned from EditStoryScreen, reloading stories in Library.");
+          _viewModel.loadStories(forceRefresh: true);
+        }
       });
     } else {
-      print(
-          "Navigating to CreateScreen to edit story details for: ${story.title}");
+      if (kDebugMode)
+        print(
+            "Story '${storyMetadata.title}' (ID: ${storyMetadata.id}) has no chapters from backend.");
+      _showSnackBar(
+          'No content chapters found for "${storyMetadata.title}". Opening editor to add content.',
+          isError: false);
+
+      Chapter placeholderChapter = Chapter(
+          id: 'new_ch_for_${storyMetadata.id}',
+          title: storyMetadata.storyType.toLowerCase() == 'single story'
+              ? storyMetadata.title
+              : 'New Chapter 1',
+          content: '',
+          isComplete: false);
+
+      storyMetadata = storyMetadata.copyWith(chapters: [placeholderChapter]);
+
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => CreateScreen(draftStory: story),
+          builder: (context) => EditStoryScreen(
+            story: storyMetadata!,
+            chapter: placeholderChapter,
+          ),
         ),
-      ).then((_) {
-        print(
-            "Returned from CreateScreen (edit mode), reloading stories in Library.");
-        _viewModel.loadStories();
+      ).then((returnedValue) {
+        if (returnedValue != null) {
+          print(
+              "Returned from EditStoryScreen (after no chapters found), reloading stories in Library.");
+          _viewModel.loadStories(forceRefresh: true);
+        }
       });
     }
+  }
+
+  void _showLoadingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Dialog(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text("Loading story..."),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   AppBar _buildAppBar(BuildContext context) {
     final viewModel = context.watch<LibraryViewModel>();
     return AppBar(
-      // ... (AppBar code remains the same)
       backgroundColor: Colors.white,
       elevation: 1.0,
       shadowColor: Colors.grey[200],
@@ -158,7 +231,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildStoryItem(BuildContext context, Story story) {
-    // ... (Story item code remains the same)
     int totalChapters = story.chapters?.length ?? 0;
     int completedChapters =
         story.chapters?.where((c) => c.isComplete).length ?? 0;
@@ -235,25 +307,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildCoverImageThumbnail(String? coverImagePath) {
-    // ... (Cover image thumbnail code remains the same)
+    ImageProvider? imageProvider;
+    if (coverImagePath != null && coverImagePath.isNotEmpty) {
+      if (coverImagePath.startsWith('http')) {
+        imageProvider = NetworkImage(coverImagePath);
+      } else if (coverImagePath.startsWith('assets/')) {
+        imageProvider = AssetImage(coverImagePath);
+      } else {
+        print(
+            "Cover image path is not a URL or asset: $coverImagePath. Displaying placeholder.");
+      }
+    }
+
     return ClipRRect(
         borderRadius: BorderRadius.circular(8.0),
         child: Container(
             width: 70,
             height: 90,
             color: Colors.grey[200],
-            child: coverImagePath != null && coverImagePath.isNotEmpty
-                // Attempt to load as asset, then fallback to file if it's a local path
-                ? Image.asset(
-                    coverImagePath, // Assuming it's an asset path like "assets/images/example.png"
+            child: imageProvider != null
+                ? Image(
+                    image: imageProvider,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
-                      // If asset fails, it might be a file path (e.g., from image_picker)
-                      // This part is tricky if paths are mixed. For dummy data, it's usually assets.
-                      // For user-uploaded, it would be a file path.
-                      // For simplicity here, we assume asset or just an icon.
                       print(
-                          "Error loading cover image asset: $coverImagePath, $error");
+                          "Error loading cover image: $coverImagePath, $error");
                       return const Icon(Icons.image_not_supported,
                           color: Colors.grey);
                     },
@@ -264,7 +342,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildStatusChip(StoryStatus status) {
-    // ... (Status chip code remains the same)
     return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -280,7 +357,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showFilterBottomSheet(BuildContext context) {
-    // ... (Filter bottom sheet code remains the same)
     final viewModel = context.read<LibraryViewModel>();
     Set<StoryStatus> tempSelectedStatuses =
         Set.from(viewModel.selectedStatuses);
@@ -349,8 +425,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               Wrap(
                   spacing: 8,
                   runSpacing: 4,
-                  // Ensure these types match your Story.storyType values
-                  children: ['Single Story', 'Chapter-based'].map((type) {
+                  children: ['Single Story', 'Chapter-based', 'Collaborative']
+                      .map((type) {
                     final bool isSelected = tempSelectedTypes.contains(type);
                     return FilterChip(
                         label: Text(type),
@@ -430,6 +506,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   void _showStoryOptions(BuildContext context, Story story) {
     final viewModel = context.read<LibraryViewModel>();
+    final profileViewModel = context.read<ProfileViewModel>();
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -461,23 +538,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 Navigator.pop(sheetContext);
                 _navigateToStoryDetail(story);
               }),
-          // ListTile( // REMOVED Duplicate Feature
-          //     leading: const Icon(Icons.copy_outlined),
-          //     title: const Text('Duplicate'),
-          //     onTap: () {
-          //       Navigator.pop(sheetContext);
-          //       _showSnackBar('Duplicate action (Not Implemented)');
-          //     }),
           ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('Share'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                // Implement Share functionality
                 final String shareText =
                     'Check out my story: "${story.title}" by ${story.authorName} on Creative Collab! ${story.description != null && story.description!.isNotEmpty ? "\n\n${story.description}" : ""}\n\n#CreativeCollab #Storytelling';
-                // In a real app, you might add a link to the story if it's hosted online
-                // e.g., shareText += "\nRead it here: https://mycreativecollab.com/story/${story.id}";
                 Share.share(shareText, subject: 'My Story: ${story.title}');
                 _showSnackBar('Sharing options opened for "${story.title}"');
               }),
@@ -491,8 +558,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   Navigator.pop(sheetContext);
                   bool success = await viewModel.updateStoryStatus(
                       story.id, StoryStatus.published);
+                  if (success) {
+                    await profileViewModel
+                        .refresh(); // Refresh ProfileViewModel
+                  }
                   _showSnackBar(
-                      success ? 'Story published' : 'Failed to publish story');
+                      success ? 'Story published' : 'Failed to publish story',
+                      isError: !success);
                 }),
           if (story.status == StoryStatus.published)
             ListTile(
@@ -504,8 +576,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   Navigator.pop(sheetContext);
                   bool success = await viewModel.updateStoryStatus(
                       story.id, StoryStatus.archived);
+                  if (success) {
+                    await profileViewModel
+                        .refresh(); // Refresh ProfileViewModel
+                  }
                   _showSnackBar(
-                      success ? 'Story archived' : 'Failed to archive story');
+                      success ? 'Story archived' : 'Failed to archive story',
+                      isError: !success);
                 }),
           if (story.status == StoryStatus.archived)
             ListTile(
@@ -516,10 +593,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 onTap: () async {
                   Navigator.pop(sheetContext);
                   bool success = await viewModel.updateStoryStatus(
-                      story.id, StoryStatus.draft); // Unarchive to draft
-                  _showSnackBar(success
-                      ? 'Story unarchived'
-                      : 'Failed to unarchive story');
+                      story.id, StoryStatus.draft);
+                  if (success) {
+                    await profileViewModel
+                        .refresh(); // Refresh ProfileViewModel
+                  }
+                  _showSnackBar(
+                      success
+                          ? 'Story unarchived'
+                          : 'Failed to unarchive story',
+                      isError: !success);
                 }),
           const Divider(),
           ListTile(
@@ -535,8 +618,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showDeleteConfirmation(BuildContext context, Story story) {
-    // ... (Delete confirmation code remains the same)
     final viewModel = context.read<LibraryViewModel>();
+    final profileViewModel = context.read<ProfileViewModel>();
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -552,9 +635,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
             onPressed: () async {
               Navigator.pop(dialogContext);
               bool success = await viewModel.deleteStory(story.id);
-              _showSnackBar(success
-                  ? '"${story.title}" deleted'
-                  : 'Failed to delete story');
+              if (success) {
+                await profileViewModel.refresh(); // Refresh ProfileViewModel
+              }
+              _showSnackBar(
+                  success
+                      ? '"${story.title}" deleted'
+                      : 'Failed to delete story. ${viewModel.errorMessage ?? ""}',
+                  isError: !success);
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.tint),
             child: const Text('Delete'),
@@ -564,20 +652,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    // ... (Snackbar code remains the same)
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(15),
-        backgroundColor:
-            AppColors.secondary, // Or AppColors.primary for success
-        duration: const Duration(seconds: 2)));
+        backgroundColor: isError ? AppColors.tint : AppColors.primary,
+        duration: const Duration(seconds: 3)));
   }
 
   String _formatDateTimeRelative(DateTime dateTime) {
-    // ... (Date formatting code remains the same)
     final now = DateTime.now();
     final difference = now.difference(dateTime);
     if (difference.inSeconds < 60) {
@@ -594,7 +680,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   String _getStatusText(StoryStatus status) {
-    // ... (Get status text code remains the same)
     switch (status) {
       case StoryStatus.draft:
         return 'Draft';
@@ -606,7 +691,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Color _getStatusColor(StoryStatus status) {
-    // ... (Get status color code remains the same)
     switch (status) {
       case StoryStatus.draft:
         return Colors.orange[700]!;
@@ -623,19 +707,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: _buildAppBar(context), // Assuming _buildAppBar is defined
+      appBar: _buildAppBar(context),
       body: SafeArea(
         child: Builder(
-          // Using Builder to ensure context is fresh for RefreshIndicator
           builder: (context) {
             if (viewModel.isLoading &&
                 viewModel.filteredStories.isEmpty &&
                 viewModel.errorMessage == null) {
-              // Show loader only if truly loading initial data
               return const Center(
                   child: CircularProgressIndicator(color: AppColors.primary));
-            } else if (viewModel.errorMessage != null) {
-              // Prioritize showing error
+            } else if (viewModel.errorMessage != null &&
+                viewModel.filteredStories.isEmpty) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -666,7 +748,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         onPressed: () =>
                             viewModel.loadStories(forceRefresh: true),
                         style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary),
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white),
                       ),
                     ],
                   ),
@@ -674,19 +757,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
               );
             } else if (viewModel.filteredStories.isNotEmpty) {
               return RefreshIndicator(
-                // Add RefreshIndicator here
                 onRefresh: () => viewModel.loadStories(forceRefresh: true),
                 child: ListView.builder(
                   padding: const EdgeInsets.all(15),
                   itemCount: viewModel.filteredStories.length,
-                  itemBuilder: (ctx, index) => _buildStoryItem(
-                      ctx,
-                      viewModel.filteredStories[
-                          index]), // Assuming _buildStoryItem is defined
+                  itemBuilder: (ctx, index) =>
+                      _buildStoryItem(ctx, viewModel.filteredStories[index]),
                 ),
               );
             } else {
-              // No error, not loading, but stories are empty
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -703,8 +782,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ? 'Try adjusting your search or filters.'
                         : 'Start creating your first story!',
                     actionLabel: 'Create New Story',
-                    onAction:
-                        _navigateToCreateScreen, // Assuming _navigateToCreateScreen is defined
+                    onAction: _navigateToCreateScreen,
                   ),
                 ),
               );
@@ -714,7 +792,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
       bottomNavigationBar: CustomBottomNavBar(
         selectedIndex: _selectedNavIndex,
-        onItemTapped: _onNavItemTapped, // Assuming _onNavItemTapped is defined
+        onItemTapped: _onNavItemTapped,
       ),
     );
   }

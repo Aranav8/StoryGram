@@ -3,14 +3,10 @@ import 'package:collabwrite/core/constants/colors.dart';
 import 'package:collabwrite/data/models/user_model.dart';
 import 'package:collabwrite/viewmodel/profile_viewmodel.dart';
 import 'package:collabwrite/views/widgets/custom_bottom_nav_bar.dart';
-// import 'package:flutter/gestures.dart'; // Not used, can be removed
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
-
-// Import the aliased story model
 import 'package:collabwrite/data/models/story_model.dart' as data_story_model;
-
 import '../create/create_screen.dart';
 import '../home/home_screen.dart';
 import '../library/library_screen.dart';
@@ -46,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       const HomeScreen(),
       const CreateScreen(),
       const LibraryScreen(),
-      const ProfileScreen(), // Current screen, navigation handled by if condition
+      const ProfileScreen(),
     ];
     Navigator.pushReplacement(
       context,
@@ -62,9 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         builder: (context, viewModel, child) {
           if (viewModel.isLoading) {
             return Scaffold(
-              // MODIFIED: Removed 'const'
               body: const Center(
-                // Added 'const' to Center and CircularProgressIndicator
                 child: CircularProgressIndicator(),
               ),
               bottomNavigationBar: CustomBottomNavBar(
@@ -76,7 +70,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
           if (viewModel.errorMessage != null) {
             return Scaffold(
-              // This was already non-const, which is correct
               body: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -96,17 +89,13 @@ class _ProfileScreenState extends State<ProfileScreen>
 
           if (viewModel.user == null) {
             return Scaffold(
-              // This was already non-const, which is correct
               body: const Center(
                 child: Padding(
                   padding: EdgeInsets.all(16.0),
                   child: Text(
                     'Could not load user profile.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize:
-                            16), // Can be const if AppColors.textGrey is const
+                    style: TextStyle(color: AppColors.textGrey, fontSize: 16),
                   ),
                 ),
               ),
@@ -169,20 +158,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                     IconButton(
                       icon: SvgPicture.asset(
                         AppAssets.notification,
-                        // ignore: deprecated_member_use
                         color: Colors.white,
-                        width: 24, // Added explicit size
-                        height: 24, // Added explicit size
+                        width: 24,
+                        height: 24,
                       ),
-                      onPressed: () {
-                        // TODO: Notification action
-                      },
+                      onPressed: () {},
                     ),
                     IconButton(
                       icon: const Icon(Icons.settings, color: Colors.white),
-                      onPressed: () {
-                        // TODO: Settings action
-                      },
+                      onPressed: () {},
                     ),
                   ],
                 ),
@@ -303,19 +287,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                 fontSize: 12,
               ),
             ),
-            // Website link can be added here if user.website is available and not null/empty
-            // const SizedBox(width: 8),
-            // if (user.website != null && user.website!.isNotEmpty) ...[
-            //   const Icon(Icons.link, color: AppColors.textGrey, size: 14),
-            //   const SizedBox(width: 2),
-            //   Text(
-            //     user.website!,
-            //     style: const TextStyle(
-            //       color: AppColors.primary,
-            //       fontSize: 12,
-            //     ),
-            //   ),
-            // ]
           ],
         ),
       ],
@@ -324,9 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildEditButton() {
     return GestureDetector(
-      onTap: () {
-        // TODO: Navigate to Edit Profile Screen
-      },
+      onTap: () {},
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.primary,
@@ -415,7 +384,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildStoryCoverImage(String? coverImageUrl) {
     if (coverImageUrl != null && coverImageUrl.isNotEmpty) {
-      // A common pattern to check if it's an asset or network
       bool isNetworkImage = coverImageUrl.startsWith('http://') ||
           coverImageUrl.startsWith('https://');
       bool isAssetImage = coverImageUrl.startsWith('assets/');
@@ -484,7 +452,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             itemCount: viewModel.userStories.length,
             itemBuilder: (context, index) {
               final story = viewModel.userStories[index];
-              return _buildStoryItem(story);
+              return _buildStoryItem(story, viewModel);
             },
           );
   }
@@ -492,9 +460,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _buildCollaborationsTab(ProfileViewModel viewModel) {
     return viewModel.collaborationStories.isEmpty
         ? _buildEmptyState('You haven\'t collaborated on any stories yet.',
-            'Find collaborators', () {
-            // TODO: Navigate to a discovery/collaboration screen
-          })
+            'Find collaborators', () {})
         : ListView.builder(
             padding: const EdgeInsets.all(15),
             itemCount: viewModel.collaborationStories.length,
@@ -525,7 +491,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             itemCount: viewModel.savedStories.length,
             itemBuilder: (context, index) {
               final story = viewModel.savedStories[index];
-              return _buildStoryItem(story);
+              return _buildStoryItem(story, viewModel);
             },
           );
   }
@@ -577,7 +543,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildStoryItem(data_story_model.Story story) {
+  Widget _buildStoryItem(
+      data_story_model.Story story, ProfileViewModel viewModel) {
     return Container(
       decoration: BoxDecoration(
           color: AppColors.secondary,
@@ -629,6 +596,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                 ),
+                // New: Bookmark button for saved stories
+                if (viewModel.savedStories.contains(story))
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.bookmark,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                      onPressed: () => viewModel.toggleSaveStory(story),
+                      tooltip: 'Remove Bookmark',
+                    ),
+                  ),
               ],
             ),
           ),

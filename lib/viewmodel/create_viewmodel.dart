@@ -20,11 +20,14 @@ class CreateViewModel extends ChangeNotifier {
   bool _isSaving = false;
   bool _hasUnsavedChanges = false;
   int? _editingStoryId;
+  String?
+      _currentDraftChapterId; // To store the ID of the chapter being edited for "Single Story"
+  String _authorName = "Current User"; // Store author name
+
   bool _isPickingImage = false;
 
   final StoryService _storyService = StoryService();
   final AuthService _authService = AuthService();
-  // final _storage = const FlutterSecureStorage(); // Not needed for timestamp ID
 
   String get title => _title;
   String get description => _description;
@@ -36,11 +39,21 @@ class CreateViewModel extends ChangeNotifier {
   bool get hasUnsavedChanges => _hasUnsavedChanges;
 
   final List<String> availableStoryTypes = const [
-    'Single Story', 'Chapter-based', 'Collaborative'
+    'Single Story',
+    'Chapter-based',
+    'Collaborative'
   ];
   final List<String> popularGenres = const [
-    'Fiction', 'Fantasy', 'Adventure', 'Romance', 'Sci-Fi', 'Mystery',
-    'Thriller', 'Horror', 'Historical', 'Non-Fiction'
+    'Fiction',
+    'Fantasy',
+    'Adventure',
+    'Romance',
+    'Sci-Fi',
+    'Mystery',
+    'Thriller',
+    'Horror',
+    'Historical',
+    'Non-Fiction'
   ];
 
   void initialize({Story? draftStory}) {
@@ -48,54 +61,104 @@ class CreateViewModel extends ChangeNotifier {
       _editingStoryId = draftStory.id;
       _title = draftStory.title;
       _description = draftStory.description ?? '';
-      if (draftStory.chapters.isNotEmpty) {
-        _writingContent = draftStory.chapters.first.content;
-      } else { _writingContent = ''; }
+      _authorName = draftStory.authorName;
       _selectedStoryType = draftStory.storyType;
       _selectedGenres = List.from(draftStory.genres);
       _coverImagePath = draftStory.coverImage;
       _hasUnsavedChanges = false;
+
+      // Content and chapter ID will now be loaded separately or on demand for editing.
+      // For simplicity, if CreateScreen is ONLY for NEW stories, this part is less critical.
+      // If CreateScreen can still be entered for editing a "Single Story" draft that previously had content:
+      if (draftStory.chapters.isNotEmpty) {
+        // This chapter comes from the story object, if list view provided it.
+        _currentDraftChapterId = draftStory.chapters.first.id;
+        _writingContent =
+            draftStory.chapters.first.content; // Pre-fill if available
+        if (kDebugMode)
+          print(
+              "CreateVM.init: Pre-filled content from draftStory.chapters. ChapterID: $_currentDraftChapterId");
+      } else {
+        _currentDraftChapterId = null;
+        _writingContent = '';
+        if (kDebugMode)
+          print(
+              "CreateVM.init: No chapters in draftStory. Content will be empty or loaded later.");
+      }
     } else {
+      // ... new story defaults
       _editingStoryId = null;
-      _title = ''; _description = ''; _writingContent = '';
+      _currentDraftChapterId = null;
+      _title = '';
+      _description = '';
+      _writingContent = '';
       _selectedStoryType = availableStoryTypes.first;
-      _selectedGenres = []; _coverImagePath = null;
+      _selectedGenres = [];
+      _coverImagePath = null;
       _hasUnsavedChanges = false;
+      _authorName = "Current User";
     }
-    if (kDebugMode) print("CreateViewModel: Initialized. Editing Story ID: $_editingStoryId");
-    WidgetsBinding.instance.addPostFrameCallback((_) { notifyListeners(); });
+    if (kDebugMode)
+      print(
+          "CreateViewModel: Initialized. Editing Story ID: $_editingStoryId. WritingContent empty: ${_writingContent.isEmpty}");
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
-  // Temporary client-side ID generation - TIMESTAMP IN SECONDS (Still FLAWED FOR PRODUCTION)
   int _generateTimestampBasedTemporaryId() {
-    // Timestamp in seconds since epoch.
     int newId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-    // Check against max int4. This will become an issue closer to 2038.
-    if (newId > 2147483647) {
-      if (kDebugMode) print("WARNING: Timestamp-based ID exceeded int4 max! This is a critical issue.");
-      // Fallback (very bad, will cause collisions or use negative numbers if not careful)
-      // For now, let it be, but this indicates the method is no longer viable.
-      // A more robust temporary fallback would be the random int within range.
-      newId = 2147483647; // Cap at max, will cause immediate collision
-    }
-    if (newId <= 0) { // Should not happen with current time, but as a safeguard
-      newId = 1; // Ensure positive
-    }
-
-    if (kDebugMode) print("CreateViewModel: Generated timestamp-based temporary story ID $newId");
+    if (newId > 2147483647) newId = 2147483647;
+    if (newId <= 0) newId = 1;
+    if (kDebugMode)
+      print(
+          "CreateViewModel: Generated timestamp-based temporary story ID $newId");
     return newId;
   }
 
   void _setUnsavedChanges() {
-    if (!_hasUnsavedChanges) { _hasUnsavedChanges = true; notifyListeners(); }
+    if (!_hasUnsavedChanges) {
+      _hasUnsavedChanges = true;
+      notifyListeners();
+    }
   }
 
-  void setTitle(String value) { if (_title != value) { _title = value; _setUnsavedChanges(); } }
-  void setDescription(String value) { if (_description != value) { _description = value; _setUnsavedChanges(); } }
-  void setWritingContent(String value) { if (_writingContent != value) { _writingContent = value; _setUnsavedChanges(); } }
-  void selectStoryType(String type) { if (_selectedStoryType != type && availableStoryTypes.contains(type)) { _selectedStoryType = type; _setUnsavedChanges(); notifyListeners(); } }
-  void toggleGenre(String genre) { _selectedGenres.contains(genre) ? _selectedGenres.remove(genre) : _selectedGenres.add(genre); _setUnsavedChanges(); notifyListeners(); }
+  void setTitle(String value) {
+    if (_title != value) {
+      _title = value;
+      _setUnsavedChanges();
+    }
+  }
+
+  void setDescription(String value) {
+    if (_description != value) {
+      _description = value;
+      _setUnsavedChanges();
+    }
+  }
+
+  void setWritingContent(String value) {
+    if (_writingContent != value) {
+      _writingContent = value;
+      _setUnsavedChanges();
+    }
+  }
+
+  void selectStoryType(String type) {
+    if (_selectedStoryType != type && availableStoryTypes.contains(type)) {
+      _selectedStoryType = type;
+      _setUnsavedChanges();
+      notifyListeners();
+    }
+  }
+
+  void toggleGenre(String genre) {
+    _selectedGenres.contains(genre)
+        ? _selectedGenres.remove(genre)
+        : _selectedGenres.add(genre);
+    _setUnsavedChanges();
+    notifyListeners();
+  }
 
   Future<void> pickCoverImage() async {
     if (_isPickingImage) return;
@@ -103,84 +166,222 @@ class CreateViewModel extends ChangeNotifier {
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-      if (image != null) { _coverImagePath = image.path; _setUnsavedChanges(); notifyListeners(); }
-    } catch (e) { if (kDebugMode) print("CreateViewModel: Error picking image: $e"); }
-    finally { _isPickingImage = false; }
+      if (image != null) {
+        _coverImagePath = image.path;
+        _setUnsavedChanges();
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) print("CreateViewModel: Error picking image: $e");
+    } finally {
+      _isPickingImage = false;
+    }
   }
 
-  void removeCoverImage() { if (_coverImagePath != null) { _coverImagePath = null; _setUnsavedChanges(); notifyListeners(); } }
+  void removeCoverImage() {
+    if (_coverImagePath != null) {
+      _coverImagePath = null;
+      _setUnsavedChanges();
+      notifyListeners();
+    }
+  }
 
   Future<bool> saveDraft() async {
-    if (title.trim().isEmpty) { if (kDebugMode) print("CreateViewModel: Title is required to save draft."); return false; }
-    _isSaving = true; notifyListeners();
+    if (title.trim().isEmpty) {
+      if (kDebugMode)
+        print("CreateViewModel: Title is required to save draft.");
+      return false;
+    }
+    _isSaving = true;
+    notifyListeners();
 
     final userId = await _authService.getCurrentUserId();
-    if (userId == null) { _isSaving = false; notifyListeners(); if (kDebugMode) print("CreateViewModel: User not logged in for saveDraft."); return false; }
-
-    int storyIdForRequest;
-    if (_editingStoryId != null && _editingStoryId! > 0) {
-      storyIdForRequest = _editingStoryId!;
-    } else {
-      storyIdForRequest = _generateTimestampBasedTemporaryId();
-      _editingStoryId = storyIdForRequest; // Store generated ID for this draft session
+    if (userId == null) {
+      _isSaving = false;
+      notifyListeners();
+      if (kDebugMode)
+        print("CreateViewModel: User not logged in for saveDraft.");
+      return false;
     }
 
-    final storyToSave = Story(
-      id: storyIdForRequest, title: _title, description: _description, coverImage: '',
-      authorId: userId, authorName: "Current User", lastEdited: DateTime.now(),
-      storyType: _selectedStoryType, status: StoryStatus.draft, genres: _selectedGenres,
-      chapters: _writingContent.trim().isNotEmpty ? [Chapter(id: 'temp_draft_ch', title: 'Chapter 1', content: _writingContent)] : [],
+    bool isUpdatingStoryMetadata =
+        (_editingStoryId != null && _editingStoryId! > 0);
+    int storyIdToUse = isUpdatingStoryMetadata
+        ? _editingStoryId!
+        : _generateTimestampBasedTemporaryId();
+
+    Story storyMetadataPayload = Story(
+      id: storyIdToUse, title: _title, description: _description,
+      coverImage: _coverImagePath, authorId: userId, authorName: _authorName,
+      lastEdited: DateTime.now(), storyType: _selectedStoryType,
+      status: StoryStatus.draft, genres: _selectedGenres,
+      chapters: [], // Chapters handled separately
     );
 
-    if (kDebugMode) print("CreateViewModel: Saving draft. Story ID: ${storyToSave.id}, User ID: $userId");
-    final success = await _storyService.createStory(storyToSave);
+    Story? savedStoryMetadata;
+    if (isUpdatingStoryMetadata) {
+      savedStoryMetadata =
+          await _storyService.updateStory(storyMetadataPayload);
+    } else {
+      savedStoryMetadata =
+          await _storyService.createStory(storyMetadataPayload);
+    }
+
+    if (savedStoryMetadata == null) {
+      if (kDebugMode) print("CreateVM: Failed to save/update story metadata.");
+      _isSaving = false;
+      notifyListeners();
+      return false;
+    }
+    _editingStoryId =
+        savedStoryMetadata.id; // Update with actual ID from backend
+
+    // Now handle the chapter
+    Chapter? savedChapter;
+    if (_writingContent.trim().isNotEmpty) {
+      if (_currentDraftChapterId != null) {
+        // Update existing chapter
+        // We need chapter number. For single story, it's always 1.
+        // If this CreateScreen handles more complex scenarios, this needs thought.
+        savedChapter = await _storyService.updateChapter(
+            chapterId: _currentDraftChapterId!,
+            storyId: _editingStoryId!,
+            title: "Chapter 1", // Or derive from story title for single story
+            content: _writingContent,
+            chapterNumber: 1,
+            isComplete: false);
+      } else {
+        // Create new chapter
+        savedChapter = await _storyService.createChapter(
+            storyId: _editingStoryId!,
+            title: "Chapter 1", // Or derive from story title
+            content: _writingContent,
+            chapterNumber: 1,
+            isComplete: false);
+      }
+
+      if (savedChapter == null) {
+        if (kDebugMode)
+          print(
+              "CreateVM: Failed to save/update chapter content after story metadata.");
+        // Metadata saved, but content failed. Partial success. UX decision needed.
+      } else {
+        _currentDraftChapterId =
+            savedChapter.id; // Store new/updated chapter ID
+      }
+    }
 
     _isSaving = false;
-    if (success) { _hasUnsavedChanges = false; if (kDebugMode) print("CreateViewModel: Draft saved successfully.");
-    } else {
-      if (kDebugMode) print("CreateViewModel: Failed to save draft.");
-      _editingStoryId = null; // Clear potentially bad ID if save failed due to collision
-    }
-    notifyListeners(); return success;
+    _hasUnsavedChanges = !(savedStoryMetadata != null &&
+        (_writingContent.trim().isEmpty || savedChapter != null));
+    notifyListeners();
+    return _hasUnsavedChanges == false;
   }
 
   Future<bool> publishStory() async {
-    if (title.trim().isEmpty || writingContent.trim().isEmpty || selectedGenres.isEmpty) { if (kDebugMode) print("CreateViewModel: Title, content, and genres are required to publish."); return false; }
-    _isSaving = true; notifyListeners();
+    if (title.trim().isEmpty ||
+        writingContent.trim().isEmpty ||
+        selectedGenres.isEmpty) {
+      if (kDebugMode)
+        print(
+            "CreateViewModel: Title, content, and genres are required to publish.");
+      return false;
+    }
+    _isSaving = true;
+    notifyListeners();
 
     final userId = await _authService.getCurrentUserId();
-    if (userId == null) { _isSaving = false; notifyListeners(); if (kDebugMode) print("CreateViewModel: User not logged in for publishStory."); return false; }
-
-    int storyIdForRequest;
-    if (_editingStoryId != null && _editingStoryId! > 0) {
-      storyIdForRequest = _editingStoryId!;
-    } else {
-      storyIdForRequest = _generateTimestampBasedTemporaryId();
+    if (userId == null) {
+      _isSaving = false;
+      notifyListeners();
+      if (kDebugMode)
+        print("CreateViewModel: User not logged in for publishStory.");
+      return false;
     }
 
-    final storyToPublish = Story(
-      id: storyIdForRequest, title: _title, description: _description, coverImage: '',
-      authorId: userId, authorName: "Current User", lastEdited: DateTime.now(), publishedDate: DateTime.now(),
-      storyType: _selectedStoryType, status: StoryStatus.published, genres: _selectedGenres,
-      chapters: [Chapter(id: 'temp_pub_ch', title: 'Chapter 1', content: _writingContent, isComplete: true)],
+    bool isUpdatingStoryMetadata =
+        (_editingStoryId != null && _editingStoryId! > 0);
+    int storyIdToUse = isUpdatingStoryMetadata
+        ? _editingStoryId!
+        : _generateTimestampBasedTemporaryId();
+
+    Story storyMetadataPayload = Story(
+      id: storyIdToUse,
+      title: _title,
+      description: _description,
+      coverImage: _coverImagePath,
+      authorId: userId,
+      authorName: _authorName,
+      lastEdited: DateTime.now(),
+      publishedDate: DateTime.now(),
+      storyType: _selectedStoryType,
+      status: StoryStatus.published,
+      genres: _selectedGenres,
+      chapters: [],
     );
 
-    if (kDebugMode) print("CreateViewModel: Publishing story. Story ID: ${storyToPublish.id}, User ID: $userId");
-    final success = await _storyService.createStory(storyToPublish);
+    Story? publishedStoryMetadata;
+    if (isUpdatingStoryMetadata) {
+      publishedStoryMetadata =
+          await _storyService.updateStory(storyMetadataPayload);
+    } else {
+      publishedStoryMetadata =
+          await _storyService.createStory(storyMetadataPayload);
+    }
+
+    if (publishedStoryMetadata == null) {
+      if (kDebugMode) print("CreateVM: Failed to publish story metadata.");
+      _isSaving = false;
+      notifyListeners();
+      return false;
+    }
+    _editingStoryId = publishedStoryMetadata.id;
+
+    Chapter? publishedChapter;
+    if (_currentDraftChapterId != null) {
+      publishedChapter = await _storyService.updateChapter(
+          chapterId: _currentDraftChapterId!,
+          storyId: _editingStoryId!,
+          title: "Chapter 1", // Or story title
+          content: _writingContent,
+          chapterNumber: 1,
+          isComplete: true);
+    } else {
+      publishedChapter = await _storyService.createChapter(
+          storyId: _editingStoryId!,
+          title: "Chapter 1", // Or story title
+          content: _writingContent,
+          chapterNumber: 1,
+          isComplete: true);
+    }
+
+    if (publishedChapter == null) {
+      if (kDebugMode)
+        print(
+            "CreateVM: Failed to publish chapter content after story metadata.");
+    }
 
     _isSaving = false;
-    if (success) {
+    if (publishedStoryMetadata != null && publishedChapter != null) {
       _hasUnsavedChanges = false;
-      if (kDebugMode) print("CreateViewModel: Story published successfully.");
-      _editingStoryId = null;
+      _editingStoryId = null; // Clear after successful publish
+      _currentDraftChapterId = null;
+      if (kDebugMode) print("CreateVM: Story published successfully.");
     } else {
-      if (kDebugMode) print("CreateViewModel: Failed to publish story.");
-      _editingStoryId = null; // Clear ID if publish failed, so next attempt generates fresh
+      if (kDebugMode)
+        print("CreateVM: Failed to fully publish story and chapter.");
     }
-    notifyListeners(); return success;
+    notifyListeners();
+    return (publishedStoryMetadata != null && publishedChapter != null);
   }
 
-  Future<String?> getCurrentUserId() async { return await _authService.getCurrentUserId(); }
+  Future<String?> getCurrentUserId() async {
+    return await _authService.getCurrentUserId();
+  }
+
   @override
-  void dispose() { if (kDebugMode) print("CreateViewModel: Disposed"); super.dispose(); }
+  void dispose() {
+    if (kDebugMode) print("CreateViewModel: Disposed");
+    super.dispose();
+  }
 }

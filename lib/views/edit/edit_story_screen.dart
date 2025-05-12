@@ -70,12 +70,13 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
       await _showUnsavedChangesDialog(
           context,
           viewModel,
-          () =>
-              Navigator.of(context).pop(viewModel.storyObjectForCollaboration));
-      return false;
+          () => Navigator.of(context)
+              .pop(viewModel.currentStoryState) // Pop with current story state
+          );
+      return false; // We might handle pop in dialog or onActionAfterSaveOrDiscard
     }
-    Navigator.of(context).pop(
-        viewModel.storyObjectForCollaboration); // Pop with current story state
+    Navigator.of(context)
+        .pop(viewModel.currentStoryState); // Pop with current story state
     return false; // We handled the pop manually
   }
 
@@ -83,7 +84,11 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
       BuildContext context,
       EditStoryViewModel viewModel,
       VoidCallback onActionAfterSaveOrDiscard) async {
-    final bool? discard = await showDialog<bool>(
+    final scaffoldMessenger =
+        ScaffoldMessenger.of(context); // Capture ScaffoldMessenger
+
+    final action = await showDialog<String>(
+      // Return a string to indicate action
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
@@ -94,20 +99,14 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(dialogContext, true); // Discard = true
+              Navigator.pop(dialogContext, 'discard'); // Discard
             },
             child:
                 const Text('Discard', style: TextStyle(color: AppColors.tint)),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(dialogContext, false); // Save then proceed
-              bool saved = await viewModel.saveDraft();
-              _showSnackBar(
-                  context, // Use the build context passed to the dialog
-                  saved ? 'Draft saved successfully!' : 'Could not save draft.',
-                  isError: !saved);
-              onActionAfterSaveOrDiscard();
+              Navigator.pop(dialogContext, 'save'); // Save then proceed
             },
             child: const Text('Save Draft & Leave',
                 style: TextStyle(color: AppColors.primary)),
@@ -115,9 +114,30 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
         ],
       ),
     );
-    if (discard == true) {
+
+    if (action == 'save') {
+      bool saved = await viewModel.saveDraft();
+      // Use the captured ScaffoldMessenger to show SnackBar
+      _showSnackBarWithSpecificMessenger(scaffoldMessenger,
+          saved ? 'Draft saved successfully!' : 'Could not save draft.',
+          isError: !saved);
+      onActionAfterSaveOrDiscard();
+    } else if (action == 'discard') {
       onActionAfterSaveOrDiscard();
     }
+  }
+
+  // Use this if you need to show snackbar from a context that might not be the main scaffold's
+  void _showSnackBarWithSpecificMessenger(
+      ScaffoldMessengerState messenger, String message,
+      {bool isError = false}) {
+    messenger.showSnackBar(SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.tint : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        duration: const Duration(seconds: 2)));
   }
 
   void _showSnackBar(BuildContext scaffoldContext, String message,
@@ -440,22 +460,28 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
                                       ? null
                                       : () async {
                                           bool success =
-                                              await viewModel.publishChapter();
+                                              // CORRECTED HERE:
+                                              await viewModel.publishChanges();
                                           _showSnackBar(
-                                              context, // Use context from Consumer
+                                              context,
                                               success
-                                                  ? 'Chapter published!'
+                                                  ? 'Changes published!'
                                                   : 'Failed to publish.',
                                               isError: !success);
+                                          if (success) {
+                                            // Optionally pop or indicate success more permanently
+                                          }
                                         },
                                   style: OutlinedButton.styleFrom(
-                                      foregroundColor: AppColors.textGrey,
-                                      side: BorderSide(
-                                          color: Colors.grey.shade300),
+                                      foregroundColor: AppColors.primary,
+                                      side:
+                                          BorderSide(color: AppColors.primary),
                                       shape: RoundedRectangleBorder(
                                           borderRadius:
                                               BorderRadius.circular(8))),
-                                  child: const Text('Publish'),
+                                  child: Text(viewModel.isSaving
+                                      ? 'Publishing...'
+                                      : 'Publish Changes'),
                                 ),
                               ),
                             ],

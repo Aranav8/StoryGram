@@ -332,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SvgPicture.asset(AppAssets.wavingHand)
             ]),
             const SizedBox(height: 2),
-            const Text(fetchedAuthor.name, // This should be dynamic
+            const Text('Aranav Kumar', // This should be dynamic
                 style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,

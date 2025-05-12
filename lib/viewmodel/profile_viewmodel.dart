@@ -1,13 +1,13 @@
 import 'package:collabwrite/data/models/author_model.dart';
 import 'package:flutter/material.dart';
-import 'package:collabwrite/data/models/user_model.dart'
-    as ui_user_model; // Alias for UI User model
-import 'package:collabwrite/data/models/story_model.dart'
-    as data_story_model; // Alias for data Story model
+import 'package:collabwrite/data/models/user_model.dart' as ui_user_model;
+import 'package:collabwrite/data/models/story_model.dart' as data_story_model;
 import 'package:collabwrite/services/auth_service.dart';
 import 'package:collabwrite/services/user_service.dart';
 import 'package:collabwrite/services/story_service.dart';
-import 'package:flutter/foundation.dart'; // For kDebugMode
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class ProfileViewModel extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -16,9 +16,8 @@ class ProfileViewModel extends ChangeNotifier {
 
   ui_user_model.User? _user;
   List<data_story_model.Story> _userStories = [];
-  List<data_story_model.Story> _collaborationStories =
-      []; // Placeholder for now
-  List<data_story_model.Story> _savedStories = []; // Placeholder for now
+  List<data_story_model.Story> _collaborationStories = [];
+  List<data_story_model.Story> _savedStories = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -32,6 +31,10 @@ class ProfileViewModel extends ChangeNotifier {
 
   ProfileViewModel() {
     _initializeData();
+  }
+
+  Future<void> refresh() async {
+    await _initializeData();
   }
 
   Future<void> _initializeData() async {
@@ -50,11 +53,23 @@ class ProfileViewModel extends ChangeNotifier {
       }
 
       // Fetch user details
-      // Assuming authorId from authService is an int, but userService expects String.
-      // And Author model uses int ID. UserService.getAuthorById uses String.
-      // Let's assume currentUserId from authService is the string representation of the numeric ID.
       final Author fetchedAuthor =
           await _userService.getAuthorById(currentUserId);
+
+      // Fetch user's own stories
+      _userStories = await _storyService.getStoriesByAuthor(currentUserId);
+
+      // Count only published stories
+      final int publishedStoriesCount = _userStories
+          .where(
+              (story) => story.status == data_story_model.StoryStatus.published)
+          .length;
+
+      if (kDebugMode) {
+        print("ProfileViewModel: Fetched ${_userStories.length} stories, "
+            "$publishedStoriesCount are published for user $currentUserId.");
+      }
+
       _user = ui_user_model.User(
         id: fetchedAuthor.id,
         name: fetchedAuthor.name,
@@ -64,70 +79,82 @@ class ProfileViewModel extends ChangeNotifier {
         website: fetchedAuthor.website,
         followers: fetchedAuthor.followers,
         following: fetchedAuthor.following,
-        stories: fetchedAuthor.storiesCount,
+        stories: publishedStoriesCount, // Use the computed count
         isVerified: fetchedAuthor.isVerified,
       );
 
-      // Fetch user's own stories
-      _userStories = await _storyService.getStoriesByAuthor(currentUserId);
+      // Fetch saved stories from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final savedStoriesJson = prefs.getString('saved_stories');
+      List<int> savedStoryIds = [];
+      if (savedStoriesJson != null) {
+        savedStoryIds =
+            (jsonDecode(savedStoriesJson) as List<dynamic>).cast<int>();
+      }
 
-      // TODO: Implement fetching actual collaboration stories
-      // For now, using dummy data or empty list.
-      // _collaborationStories = ...
-      // Example: if Story model had a simple authorId and we fetched all stories
-      // final allStories = await _storyService.getAllStories();
-      // _collaborationStories = allStories.where((story) =>
-      //    story.authorId != currentUserId &&
-      //    story.collaborators.any((c) => c.userId == currentUserId)
-      // ).toList();
-      // This is a placeholder for actual implementation
+      _savedStories = [];
+      for (int storyId in savedStoryIds) {
+        final story = await _storyService.getStoryById(storyId);
+        if (story != null) {
+          _savedStories.add(story);
+        } else {
+          if (kDebugMode) {
+            print(
+                "ProfileViewModel: Failed to fetch saved story with ID $storyId");
+          }
+        }
+      }
+      if (kDebugMode) {
+        print(
+            "ProfileViewModel: Loaded saved stories: ${_savedStories.length}");
+      }
+
+      // TODO: Implement fetching collaboration stories
       _collaborationStories = _generateDummyCollaborationStories(currentUserId);
-
-      // TODO: Implement fetching/loading saved stories
-      // For now, using dummy data or empty list if `toggleSaveStory` is purely local
-      // _savedStories = ...
-      _savedStories = _generateDummySavedStories();
     } catch (e) {
       if (kDebugMode) {
         print("Error initializing profile data: $e");
       }
       _errorMessage = "Failed to load profile data: ${e.toString()}";
+      _user = null; // Ensure user is null on error
+      _userStories = [];
+      _savedStories = [];
+      _collaborationStories = [];
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Placeholder for dummy collaboration stories if needed
   List<data_story_model.Story> _generateDummyCollaborationStories(
       String currentUserId) {
-    // Replace with actual data fetching or keep empty
     return [];
-    // Example:
-    // return data_story_model.Story.generateDummyStories(2).where((story) {
-    //   // Ensure this dummy story is not authored by current user but has them as collaborator
-    //   bool isCollaborator = story.collaborators.any((c) => c.userId == currentUserId && c.role != data_story_model.CollaboratorRole.owner);
-    //   return story.authorId != currentUserId && isCollaborator;
-    // }).toList();
   }
 
-  // Placeholder for dummy saved stories
-  List<data_story_model.Story> _generateDummySavedStories() {
-    // Replace with actual data fetching or logic for locally saved stories
-    return [];
-    // Example:
-    // return data_story_model.Story.generateDummyStories(3);
-  }
-
-  void toggleSaveStory(data_story_model.Story story) {
+  Future<void> toggleSaveStory(data_story_model.Story story) async {
     final isSaved = _savedStories.any((s) => s.id == story.id);
+    final prefs = await SharedPreferences.getInstance();
+    List<int> savedStoryIds = [];
+    final savedStoriesJson = prefs.getString('saved_stories');
+    if (savedStoriesJson != null) {
+      savedStoryIds =
+          (jsonDecode(savedStoriesJson) as List<dynamic>).cast<int>();
+    }
 
     if (isSaved) {
       _savedStories.removeWhere((s) => s.id == story.id);
+      savedStoryIds.remove(story.id);
     } else {
       _savedStories.add(story);
+      if (!savedStoryIds.contains(story.id)) {
+        savedStoryIds.add(story.id);
+      }
     }
-    // TODO: If saved stories are backend-driven, call an API here.
+
+    await prefs.setString('saved_stories', jsonEncode(savedStoryIds));
+    if (kDebugMode) {
+      print("ProfileViewModel: Saved stories updated: $savedStoryIds");
+    }
     notifyListeners();
   }
 }

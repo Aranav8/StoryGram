@@ -3,6 +3,7 @@ import 'package:collabwrite/data/models/story_model.dart';
 import 'package:collabwrite/services/auth_service.dart';
 import 'package:collabwrite/viewmodel/create_viewmodel.dart';
 import 'package:collabwrite/viewmodel/library_viewmodel.dart';
+import 'package:collabwrite/viewmodel/profile_viewmodel.dart';
 import 'package:collabwrite/views/create/create_screen.dart';
 import 'package:collabwrite/views/home/home_screen.dart';
 import 'package:collabwrite/views/library/library_screen.dart';
@@ -19,7 +20,8 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => LibraryViewModel()),
-        ChangeNotifierProvider(create: (_) => CreateViewModel())
+        ChangeNotifierProvider(create: (_) => CreateViewModel()),
+        ChangeNotifierProvider(create: (_) => ProfileViewModel()),
       ],
       child: const MyApp(),
     ),

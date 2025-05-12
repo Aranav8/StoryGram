@@ -1,11 +1,10 @@
-// views/story_reader/story_reader_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:collabwrite/data/models/story_model.dart';
 import 'package:collabwrite/viewmodel/story_reader_viewmodel.dart';
 import 'package:collabwrite/core/constants/colors.dart';
-import 'package:intl/intl.dart'; // For date formatting
+import 'package:intl/intl.dart';
 import 'package:collabwrite/data/models/user_model.dart' as app_user;
 import 'package:share_plus/share_plus.dart';
 
@@ -36,7 +35,7 @@ class StoryReaderScreen extends StatelessWidget {
 
   Widget _buildStoryContent(
       BuildContext context, StoryReaderViewModel viewModel) {
-    final story = viewModel.story; // Get the story from the view model
+    final story = viewModel.story;
     final author = viewModel.author;
 
     return CustomScrollView(
@@ -60,7 +59,7 @@ class StoryReaderScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 16.0, // Smaller when collapsed
+                fontSize: 16.0,
                 fontWeight: FontWeight.bold,
               ),
               maxLines: 2,
@@ -71,7 +70,6 @@ class StoryReaderScreen extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       Image.network(
-                        // Or Image.asset if it's an asset
                         story.coverImage!,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
@@ -97,9 +95,12 @@ class StoryReaderScreen extends StatelessWidget {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.bookmark_border, color: Colors.white),
-              tooltip: 'Bookmark',
-              onPressed: () {/* TODO: Implement bookmark */},
+              icon: Icon(
+                viewModel.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: Colors.white,
+              ),
+              tooltip: viewModel.isSaved ? 'Remove Bookmark' : 'Bookmark',
+              onPressed: () => viewModel.toggleSaveStory(),
             ),
             IconButton(
               icon: const Icon(Icons.more_vert, color: Colors.white),
@@ -147,10 +148,7 @@ class StoryReaderScreen extends StatelessWidget {
                             ))
                         .toList(),
                   ),
-
                 const Divider(height: 30, thickness: 0.8),
-                // Using Markdown widget for richer text rendering if content is Markdown
-                // If it's plain text, SelectableText is fine.
                 MarkdownBody(
                   data: viewModel.storyContent,
                   selectable: true,
@@ -166,13 +164,9 @@ class StoryReaderScreen extends StatelessWidget {
                     code: const TextStyle(
                         backgroundColor: AppColors.containerBackground,
                         fontFamily: "monospace"),
-                    // blockquoteDecoration: BoxDecoration(
-                    //   color: Colors.blue[50],
-                    //   border: Border(left: BorderSide(color: Colors.blue[200]!, width: 4)),
-                    // ),
                   ),
                 ),
-                const SizedBox(height: 50), // Extra space at the bottom
+                const SizedBox(height: 50),
               ],
             ),
           ),
@@ -184,7 +178,7 @@ class StoryReaderScreen extends StatelessWidget {
   Widget _buildAuthorSection(BuildContext context, app_user.User? author,
       StoryReaderViewModel viewModel) {
     if (author == null) {
-      return const SizedBox.shrink(); // Or a placeholder
+      return const SizedBox.shrink();
     }
     return Row(
       children: [
@@ -192,7 +186,7 @@ class StoryReaderScreen extends StatelessWidget {
           radius: 24,
           backgroundImage:
               author.profileImage != null && author.profileImage!.isNotEmpty
-                  ? NetworkImage(author.profileImage!) // Or AssetImage
+                  ? NetworkImage(author.profileImage!)
                   : null,
           child: author.profileImage == null || author.profileImage!.isEmpty
               ? Text(author.name.substring(0, 1).toUpperCase(),
@@ -257,14 +251,12 @@ class StoryReaderScreen extends StatelessWidget {
   Widget _buildBottomActionBar(
       BuildContext context, StoryReaderViewModel viewModel) {
     return Material(
-      // Use Material for elevation and theming
       elevation: 8.0,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
         decoration: BoxDecoration(
           color: Theme.of(context).bottomAppBarTheme.color ??
               Theme.of(context).scaffoldBackgroundColor,
-          // border: Border(top: BorderSide(color: Colors.grey[300]!))
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -281,7 +273,7 @@ class StoryReaderScreen extends StatelessWidget {
             _actionButton(
               context,
               icon: Icons.comment_outlined,
-              label: 'Comment', // Placeholder, actual count would come from API
+              label: 'Comment',
               color: Colors.grey[700],
               onPressed: () {/* TODO: Implement comment functionality */},
             ),

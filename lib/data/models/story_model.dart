@@ -384,7 +384,9 @@ class Story {
           json['published_date'] as String?),
       lastEdited: effectiveLastEdited,
       chapters: _parseList(
-          json['Chapters'] ?? json['chapters'], (c) => Chapter.fromJson(c)),
+          // _parseList handles null or non-list gracefully
+          json['Chapters'] ?? json['chapters'],
+          (c) => Chapter.fromJson(c)),
       storyType: json['StoryType'] as String? ??
           json['story_type'] as String? ??
           'Single Story',
