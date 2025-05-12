@@ -1,10 +1,11 @@
+// views/story_reader/story_reader_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:collabwrite/data/models/story_model.dart';
 import 'package:collabwrite/viewmodel/story_reader_viewmodel.dart';
 import 'package:collabwrite/core/constants/colors.dart';
-import 'package:intl/intl.dart';
+import 'package:collabwrite/core/utils/date_formatter.dart'; // Import the formatter
 import 'package:collabwrite/data/models/user_model.dart' as app_user;
 import 'package:share_plus/share_plus.dart';
 
@@ -16,7 +17,8 @@ class StoryReaderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => StoryReaderViewModel(story: story),
+      // Initialize ViewModel, which might fetch more details if needed
+      create: (_) => StoryReaderViewModel(story: story)..initialize(),
       child: Consumer<StoryReaderViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
@@ -35,8 +37,21 @@ class StoryReaderScreen extends StatelessWidget {
 
   Widget _buildStoryContent(
       BuildContext context, StoryReaderViewModel viewModel) {
+    // Use the potentially updated story from the ViewModel
     final story = viewModel.story;
-    final author = viewModel.author;
+    final author = viewModel.author; // Author fetched by ViewModel
+
+    // Determine the date string to display
+    String displayDate;
+    if (story.status == StoryStatus.published && story.publishedDate != null) {
+      // Use absolute date for published stories
+      displayDate =
+          'Published ${DateFormatter.formatAbsoluteDate(story.publishedDate)}';
+    } else {
+      // For drafts or archived, show last edited date (absolute format here)
+      displayDate =
+          'Updated ${DateFormatter.formatAbsoluteDate(story.lastEdited)}';
+    }
 
     return CustomScrollView(
       slivers: [
@@ -69,12 +84,20 @@ class StoryReaderScreen extends StatelessWidget {
                 ? Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        story.coverImage!,
+                      // Use a FadeInImage for smoother loading
+                      FadeInImage.assetNetwork(
+                        placeholder:
+                            'assets/images/placeholder_cover.png', // Add a placeholder asset
+                        image: story.coverImage!,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(color: AppColors.secondary),
+                        imageErrorBuilder: (context, error, stackTrace) =>
+                            Container(
+                                color: AppColors.secondary,
+                                child: const Icon(Icons.broken_image,
+                                    color: AppColors
+                                        .textGrey)), // Fallback for network errors
                       ),
+                      // Gradient overlay
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -91,7 +114,12 @@ class StoryReaderScreen extends StatelessWidget {
                       ),
                     ],
                   )
-                : Container(color: AppColors.secondary),
+                : Container(
+                    color: AppColors.secondary,
+                    child: const Center(
+                        child: Icon(Icons.image_not_supported,
+                            color: AppColors.textGrey, size: 60)),
+                  ), // Placeholder if no cover image
           ),
           actions: [
             IconButton(
@@ -105,7 +133,7 @@ class StoryReaderScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.more_vert, color: Colors.white),
               tooltip: 'More options',
-              onPressed: () {/* TODO: Implement more options */},
+              onPressed: () {/* TODO: Implement more options menu */},
             ),
           ],
         ),
@@ -115,9 +143,23 @@ class StoryReaderScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildAuthorSection(context, author, viewModel),
-                const SizedBox(height: 12),
+                // Display Author Section (if author data is available)
+                if (author != null) ...[
+                  _buildAuthorSection(context, author, viewModel),
+                  const SizedBox(height: 16), // Spacing after author
+                ] else ...[
+                  // Show basic author name if author details failed to load
+                  Text('By ${story.authorName}',
+                      style: TextStyle(
+                          color: Colors.grey[700],
+                          fontStyle: FontStyle.italic)),
+                  const SizedBox(height: 16),
+                ],
+
+                // Metadata Row
                 Row(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.center, // Align items vertically
                   children: [
                     _buildInfoChip(Icons.thumb_up_alt_outlined,
                         "${viewModel.likesCount} Likes"),
@@ -125,14 +167,26 @@ class StoryReaderScreen extends StatelessWidget {
                     _buildInfoChip(Icons.visibility_outlined,
                         "${viewModel.viewsCount} Views"),
                     const Spacer(),
-                    if (story.publishedDate != null)
-                      Text(
-                        'Published: ${DateFormat.yMMMd().format(story.publishedDate!)}',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
+                    // Display the calculated date string
+                    Text(
+                      displayDate,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
                   ],
                 ),
+                const SizedBox(height: 12), // Spacing before type/genres
+
+                // Display Story Type
+                Text(
+                  'Type: ${story.storyType}',
+                  style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500),
+                ),
                 const SizedBox(height: 8),
+
+                // Display Genres
                 if (story.genres.isNotEmpty)
                   Wrap(
                     spacing: 6.0,
@@ -143,30 +197,73 @@ class StoryReaderScreen extends StatelessWidget {
                                   style: const TextStyle(fontSize: 11)),
                               backgroundColor:
                                   AppColors.primary.withOpacity(0.1),
+                              labelStyle: TextStyle(
+                                  color: AppColors.primary), // Darker label
                               side: BorderSide.none,
                               visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 0), // Adjust padding
                             ))
                         .toList(),
                   ),
                 const Divider(height: 30, thickness: 0.8),
-                MarkdownBody(
-                  data: viewModel.storyContent,
-                  selectable: true,
-                  styleSheet: MarkdownStyleSheet(
-                    p: const TextStyle(
-                        fontSize: 17, height: 1.65, color: Color(0xFF333333)),
-                    h2: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.background,
-                        height: 1.8,
-                        letterSpacing: -0.5),
-                    code: const TextStyle(
-                        backgroundColor: AppColors.containerBackground,
-                        fontFamily: "monospace"),
-                  ),
-                ),
-                const SizedBox(height: 50),
+
+                // Display Story Content
+                // Use the content from the ViewModel, which might be loaded dynamically
+                viewModel.storyContent.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40.0),
+                        child: Center(
+                            child: Text("Content not available.",
+                                style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic))),
+                      )
+                    : MarkdownBody(
+                        data: viewModel.storyContent,
+                        selectable: true,
+                        styleSheet: MarkdownStyleSheet(
+                          p: const TextStyle(
+                              fontSize: 17,
+                              height: 1.65,
+                              color: Color(0xFF333333)),
+                          h1: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.background,
+                              height: 1.8),
+                          h2: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.background,
+                              height: 1.8),
+                          h3: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.background,
+                              height: 1.8),
+                          // Add more styles as needed
+                          blockquoteDecoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            border: Border(
+                                left: BorderSide(
+                                    color: Colors.grey[300]!, width: 4)),
+                          ),
+                          blockquotePadding: const EdgeInsets.all(12),
+                          code: TextStyle(
+                              backgroundColor: Colors.grey[200],
+                              fontFamily: "monospace",
+                              fontSize: 15),
+                          codeblockDecoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          codeblockPadding: const EdgeInsets.all(10),
+                          listBulletPadding: const EdgeInsets.only(
+                              left: 4, top: 4), // Adjust bullet padding
+                        ),
+                      ),
+                const SizedBox(height: 50), // Bottom padding
               ],
             ),
           ),
@@ -175,24 +272,29 @@ class StoryReaderScreen extends StatelessWidget {
     );
   }
 
+  // _buildAuthorSection: Ensure it handles null author.profileImage correctly
   Widget _buildAuthorSection(BuildContext context, app_user.User? author,
       StoryReaderViewModel viewModel) {
-    if (author == null) {
-      return const SizedBox.shrink();
-    }
+    // This check is now done before calling the function in _buildStoryContent
+    // if (author == null) {
+    //   return const SizedBox.shrink(); // Or display 'Author Unknown'
+    // }
+
     return Row(
       children: [
         CircleAvatar(
           radius: 24,
+          backgroundColor: AppColors.secondary, // Background for placeholder
           backgroundImage:
-              author.profileImage != null && author.profileImage!.isNotEmpty
+              author!.profileImage != null && author.profileImage!.isNotEmpty
                   ? NetworkImage(author.profileImage!)
-                  : null,
-          child: author.profileImage == null || author.profileImage!.isEmpty
-              ? Text(author.name.substring(0, 1).toUpperCase(),
-                  style: const TextStyle(fontSize: 20))
-              : null,
-          backgroundColor: AppColors.secondary,
+                  : null, // Use null for NetworkImage if no URL
+          child: (author.profileImage == null || author.profileImage!.isEmpty)
+              ? Text(
+                  // Display initials only if no image URL
+                  author.name.isNotEmpty ? author.name[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 20, color: Colors.white))
+              : null, // Render nothing if NetworkImage is loading/failed
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -206,16 +308,18 @@ class StoryReaderScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     color: AppColors.background),
               ),
-              Text(
-                author.bio.isNotEmpty ? author.bio : 'Storyteller',
-                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              if (author.bio.isNotEmpty) // Only show bio if it exists
+                Text(
+                  author.bio,
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
         const SizedBox(width: 10),
+        // Follow Button (logic seems okay, relies on ViewModel state)
         OutlinedButton(
           onPressed: () => viewModel.toggleFollowAuthor(),
           style: OutlinedButton.styleFrom(
@@ -237,6 +341,7 @@ class StoryReaderScreen extends StatelessWidget {
     );
   }
 
+  // _buildInfoChip remains the same
   Widget _buildInfoChip(IconData icon, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -248,6 +353,7 @@ class StoryReaderScreen extends StatelessWidget {
     );
   }
 
+  // _buildBottomActionBar remains the same
   Widget _buildBottomActionBar(
       BuildContext context, StoryReaderViewModel viewModel) {
     return Material(
@@ -266,16 +372,16 @@ class StoryReaderScreen extends StatelessWidget {
               icon: viewModel.isLiked
                   ? Icons.thumb_up_alt_rounded
                   : Icons.thumb_up_alt_outlined,
-              label: '${viewModel.likesCount}',
+              label: '${viewModel.likesCount}', // Use likesCount from VM
               color: viewModel.isLiked ? AppColors.primary : Colors.grey[700],
               onPressed: () => viewModel.toggleLike(),
             ),
             _actionButton(
               context,
               icon: Icons.comment_outlined,
-              label: 'Comment',
+              label: 'Comment', // Replace with comment count later if available
               color: Colors.grey[700],
-              onPressed: () {/* TODO: Implement comment functionality */},
+              onPressed: () {/* TODO: Implement comment screen navigation */},
             ),
             _actionButton(
               context,
@@ -283,8 +389,9 @@ class StoryReaderScreen extends StatelessWidget {
               label: 'Share',
               color: Colors.grey[700],
               onPressed: () {
+                // Use details from ViewModel's story object
                 final String shareText =
-                    'Check out this story: "${viewModel.story.title}" by ${viewModel.story.authorName}!\n${viewModel.story.description ?? ""}\n#CollabWriteApp';
+                    'Check out this story: "${viewModel.story.title}" by ${viewModel.story.authorName} on CollabWrite!\n${viewModel.story.description ?? ""}\n#CollabWriteApp';
                 Share.share(shareText,
                     subject: 'Story: ${viewModel.story.title}');
               },
@@ -295,6 +402,7 @@ class StoryReaderScreen extends StatelessWidget {
     );
   }
 
+  // _actionButton remains the same
   Widget _actionButton(BuildContext context,
       {required IconData icon,
       required String label,

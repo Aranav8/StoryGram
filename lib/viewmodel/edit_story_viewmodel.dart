@@ -260,13 +260,8 @@ class EditStoryViewModel extends ChangeNotifier {
   }
 
   Future<bool> publishChanges() async {
-    if (chapterTitleController.text.trim().isEmpty ||
-        contentController.text.trim().isEmpty) {
-      return false;
-    }
-    _isSaving = true;
-    _justSaved = false;
-    notifyListeners();
+    if (chapterTitleController.text.trim().isEmpty || contentController.text.trim().isEmpty) { return false; }
+    _isSaving = true; _justSaved = false; notifyListeners();
 
     // Update Story Metadata (lastEdited, publishedDate, status)
     _editableStory = _editableStory.copyWith(
@@ -276,11 +271,8 @@ class EditStoryViewModel extends ChangeNotifier {
     Story? updatedStoryMeta = await _storyService.updateStory(_editableStory);
 
     if (updatedStoryMeta == null) {
-      if (kDebugMode)
-        print("EditStoryVM: Failed to update story metadata for publish.");
-      _isSaving = false;
-      notifyListeners();
-      return false;
+      if (kDebugMode) print("EditStoryVM: Failed to update story metadata for publish.");
+      _isSaving = false; notifyListeners(); return false;
     }
     _editableStory = updatedStoryMeta;
 
@@ -296,23 +288,19 @@ class EditStoryViewModel extends ChangeNotifier {
     _isSaving = false;
     if (updatedChapter != null) {
       _editableChapter = updatedChapter;
-      if (_chapterIndex >= 0 &&
-          _chapterIndex < _editableStory.chapters.length) {
+      if (_chapterIndex >= 0 && _chapterIndex < _editableStory.chapters.length) {
         _editableStory.chapters[_chapterIndex] = _editableChapter;
       } else if (_editableStory.chapters.isEmpty && _chapterIndex == 0) {
         _editableStory.chapters.add(_editableChapter);
       }
       _originalStory = _editableStory.copyWith(
-          chapters:
-              List.from(_editableStory.chapters.map((c) => c.copyWith())));
+          chapters: List.from(_editableStory.chapters.map((c) => c.copyWith()))
+      );
       _hasUnsavedChanges = false;
       _justSaved = true;
-      if (kDebugMode)
-        print(
-            'EditStoryVM: Chapter published successfully (ID: ${updatedChapter.id}).');
+      if (kDebugMode) print('EditStoryVM: Chapter published successfully (ID: ${updatedChapter.id}).');
     } else {
-      if (kDebugMode)
-        print('EditStoryVM: Failed to publish chapter to backend.');
+      if (kDebugMode) print('EditStoryVM: Failed to publish chapter to backend.');
     }
     notifyListeners();
     return updatedChapter != null;

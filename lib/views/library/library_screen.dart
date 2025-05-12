@@ -15,6 +15,7 @@ import 'package:collabwrite/views/widgets/empty_state.dart';
 import 'package:collabwrite/services/story_service.dart';
 import 'package:collabwrite/viewmodel/profile_viewmodel.dart'; // Import ProfileViewModel
 
+import '../../core/utils/date_formatter.dart';
 import '../edit/edit_story_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -287,8 +288,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                   fontSize: 11, color: Colors.grey[700])),
                           const SizedBox(height: 6),
                         ]),
-                  Text('Edited: ${_formatDateTimeRelative(story.lastEdited)}',
+                  Text(
+                      'Edited: ${DateFormatter.formatRelativeTime(story.lastEdited)}',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  if (story.status == StoryStatus.published &&
+                      story.publishedDate != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Text(
+                          'Published: ${DateFormatter.formatRelativeTime(story.publishedDate)}',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    ),
                 ])),
             SizedBox(
                 width: 30,

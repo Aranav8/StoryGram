@@ -459,29 +459,27 @@ class _EditStoryScreenState extends State<EditStoryScreen> {
                                   onPressed: viewModel.isSaving
                                       ? null
                                       : () async {
-                                          bool success =
-                                              // CORRECTED HERE:
-                                              await viewModel.publishChanges();
-                                          _showSnackBar(
-                                              context,
-                                              success
-                                                  ? 'Changes published!'
-                                                  : 'Failed to publish.',
-                                              isError: !success);
-                                          if (success) {
-                                            // Optionally pop or indicate success more permanently
-                                          }
-                                        },
+                                    bool success =
+                                    // CORRECTED HERE:
+                                    await viewModel.publishChanges();
+                                    _showSnackBar(
+                                        context,
+                                        success
+                                            ? 'Changes published!'
+                                            : 'Failed to publish.',
+                                        isError: !success);
+                                    if (success) {
+                                      // Optionally pop or indicate success more permanently
+                                    }
+                                  },
                                   style: OutlinedButton.styleFrom(
                                       foregroundColor: AppColors.primary,
-                                      side:
-                                          BorderSide(color: AppColors.primary),
+                                      side: BorderSide(
+                                          color: AppColors.primary),
                                       shape: RoundedRectangleBorder(
                                           borderRadius:
-                                              BorderRadius.circular(8))),
-                                  child: Text(viewModel.isSaving
-                                      ? 'Publishing...'
-                                      : 'Publish Changes'),
+                                          BorderRadius.circular(8))),
+                                  child: Text(viewModel.isSaving ? 'Publishing...' : 'Publish Changes'),
                                 ),
                               ),
                             ],

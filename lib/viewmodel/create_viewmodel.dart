@@ -299,41 +299,27 @@ class CreateViewModel extends ChangeNotifier {
       return false;
     }
 
-    bool isUpdatingStoryMetadata =
-        (_editingStoryId != null && _editingStoryId! > 0);
-    int storyIdToUse = isUpdatingStoryMetadata
-        ? _editingStoryId!
-        : _generateTimestampBasedTemporaryId();
+    bool isUpdatingStoryMetadata = (_editingStoryId != null && _editingStoryId! > 0);
+    int storyIdToUse = isUpdatingStoryMetadata ? _editingStoryId! : _generateTimestampBasedTemporaryId();
 
     Story storyMetadataPayload = Story(
-      id: storyIdToUse,
-      title: _title,
-      description: _description,
-      coverImage: _coverImagePath,
-      authorId: userId,
-      authorName: _authorName,
-      lastEdited: DateTime.now(),
-      publishedDate: DateTime.now(),
-      storyType: _selectedStoryType,
-      status: StoryStatus.published,
-      genres: _selectedGenres,
+      id: storyIdToUse, title: _title, description: _description,
+      coverImage: _coverImagePath, authorId: userId, authorName: _authorName,
+      lastEdited: DateTime.now(), publishedDate: DateTime.now(),
+      storyType: _selectedStoryType, status: StoryStatus.published, genres: _selectedGenres,
       chapters: [],
     );
 
     Story? publishedStoryMetadata;
     if (isUpdatingStoryMetadata) {
-      publishedStoryMetadata =
-          await _storyService.updateStory(storyMetadataPayload);
+      publishedStoryMetadata = await _storyService.updateStory(storyMetadataPayload);
     } else {
-      publishedStoryMetadata =
-          await _storyService.createStory(storyMetadataPayload);
+      publishedStoryMetadata = await _storyService.createStory(storyMetadataPayload);
     }
 
     if (publishedStoryMetadata == null) {
       if (kDebugMode) print("CreateVM: Failed to publish story metadata.");
-      _isSaving = false;
-      notifyListeners();
-      return false;
+      _isSaving = false; notifyListeners(); return false;
     }
     _editingStoryId = publishedStoryMetadata.id;
 
@@ -356,9 +342,7 @@ class CreateViewModel extends ChangeNotifier {
     }
 
     if (publishedChapter == null) {
-      if (kDebugMode)
-        print(
-            "CreateVM: Failed to publish chapter content after story metadata.");
+      if (kDebugMode) print("CreateVM: Failed to publish chapter content after story metadata.");
     }
 
     _isSaving = false;
@@ -368,8 +352,7 @@ class CreateViewModel extends ChangeNotifier {
       _currentDraftChapterId = null;
       if (kDebugMode) print("CreateVM: Story published successfully.");
     } else {
-      if (kDebugMode)
-        print("CreateVM: Failed to fully publish story and chapter.");
+      if (kDebugMode) print("CreateVM: Failed to fully publish story and chapter.");
     }
     notifyListeners();
     return (publishedStoryMetadata != null && publishedChapter != null);

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:collabwrite/data/models/story_model.dart' as data_story_model;
+import '../../core/utils/date_formatter.dart';
 import '../create/create_screen.dart';
 import '../home/home_screen.dart';
 import '../library/library_screen.dart';
@@ -726,7 +727,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                     const Spacer(),
                     Text(
-                      _formatDate(story.publishedDate),
+                      DateFormatter.formatRelativeTime(
+                          story.publishedDate ?? story.lastEdited),
                       style: const TextStyle(
                         color: AppColors.textGrey,
                         fontSize: 12,
